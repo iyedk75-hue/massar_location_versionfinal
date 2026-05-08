@@ -14,6 +14,7 @@ import { PageHeader } from "@/app/layout";
 import { Pagination } from "@/components/Pagination";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { DepositAnalyticsDialog } from "@/pages/payments/DepositAnalyticsDialog";
 import { PaymentForm } from "@/pages/payments/PaymentForm";
 import { getCars } from "@/services/car.service";
 import { getClients } from "@/services/client.service";
@@ -60,6 +61,7 @@ export function PaymentsPage() {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [open, setOpen] = useState(false);
   const [actionSummary, setActionSummary] = useState<ReservationSummary | null>(null);
+  const [depositAnalyticsOpen, setDepositAnalyticsOpen] = useState(false);
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -187,7 +189,7 @@ export function PaymentsPage() {
         </Dialog>
       </PageHeader>
 
-      <StatsGrid totals={totals} />
+      <StatsGrid onDepositDetails={() => setDepositAnalyticsOpen(true)} totals={totals} />
 
       <section className="grid gap-4 rounded-lg border border-border bg-white p-4 shadow-sm xl:grid-cols-3">
         <FilterField label="Filtrer par réservation">
@@ -260,13 +262,30 @@ export function PaymentsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <DepositAnalyticsDialog
+        cars={cars}
+        clients={clients}
+        onOpenChange={setDepositAnalyticsOpen}
+        onRefund={(reservationId) => {
+          const summary = summaries.find((item) => item.reservation.id === reservationId);
+          if (!summary) return;
+          setDepositAnalyticsOpen(false);
+          setActionSummary(summary);
+        }}
+        open={depositAnalyticsOpen}
+        payments={payments}
+        reservations={reservations}
+      />
     </div>
   );
 }
 
 function StatsGrid({
+  onDepositDetails,
   totals,
 }: {
+  onDepositDetails: () => void;
   totals: { depositPaid: number; depositRefunded: number; remaining: number; totalDue: number; totalPaid: number };
 }) {
   return (
@@ -296,6 +315,7 @@ function StatsGrid({
         description="Cautions actuellement versées"
         icon={ShieldCheck}
         label="Caution versée"
+        onClick={onDepositDetails}
         tone="purple"
         value={formatMoney(totals.depositPaid)}
       />
@@ -314,12 +334,14 @@ function StatCard({
   icon: Icon,
   description,
   label,
+  onClick,
   tone,
   value,
 }: {
   description: string;
   icon: typeof Banknote;
   label: string;
+  onClick?: () => void;
   tone: "blue" | "green" | "orange" | "purple";
   value: string;
 }) {
@@ -331,7 +353,23 @@ function StatCard({
   };
 
   return (
-    <article className={cn("min-h-[112px] rounded-lg border bg-white p-4 shadow-sm transition-smooth hover:-translate-y-0.5 hover:shadow-md", tones[tone])}>
+    <article
+      className={cn(
+        "min-h-[112px] rounded-lg border bg-white p-4 shadow-sm transition-smooth hover:-translate-y-0.5 hover:shadow-md",
+        onClick && "cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+        tones[tone],
+      )}
+      onClick={onClick}
+      onKeyDown={(event) => {
+        if (!onClick) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onClick();
+        }
+      }}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+    >
       <div className="flex min-w-0 items-start gap-3">
         <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/80">
           <Icon className="h-5 w-5" />

@@ -9,6 +9,9 @@ export interface Payment {
   method: PaymentMethod;
   paymentDate: string;
   note?: string | null;
+  archived?: boolean | null;
+  archivedAt?: string | null;
+  archivedReason?: string | null;
   createdAt: string;
 }
 

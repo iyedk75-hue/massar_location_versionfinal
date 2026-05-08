@@ -1,28 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Check, CircleUserRound, LogOut, Menu, Moon, Settings, Sun, User } from "lucide-react";
+import { CircleUserRound, LogOut, Menu, Moon, Settings, Sun, User } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
-import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
+import { readDisplaySettings, settingsChangedEvent } from "@/utils/settings";
 
 type ThemeMode = "light" | "dark";
 
 const themeStorageKey = "rentaldesk:theme";
-const settingsStorageKey = "rentaldesk:settings";
-
-function readUserInfo() {
-  if (typeof window === "undefined") return { agencyName: "", userName: "" };
-  try {
-    const stored = window.localStorage.getItem(settingsStorageKey);
-    if (!stored) return { agencyName: "", userName: "" };
-    const parsed = JSON.parse(stored) as { agencyName?: unknown; userName?: unknown };
-    return {
-      agencyName: typeof parsed.agencyName === "string" ? parsed.agencyName.trim() : "",
-      userName: typeof parsed.userName === "string" ? parsed.userName.trim() : "",
-    };
-  } catch {
-    return { agencyName: "", userName: "" };
-  }
-}
 
 export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   return (
@@ -49,11 +34,13 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
 
 function ProfileMenu() {
   const [open, setOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [settings, setSettings] = useState(() => readDisplaySettings());
   const ref = useRef<HTMLDivElement>(null);
-  const info = readUserInfo();
+  const { logout, user } = useAuth();
+  const agencyName = settings.agencyName || "Location Auto bizerte";
 
-  const displayName = info.userName || "Ahmed Mahjoub";
-  const agencyName = info.agencyName || "Location Auto bizerte";
+  const displayName = settings.adminName || user?.fullName || "Utilisateur";
   const initials = displayName
     .trim()
     .split(/\s+/)
@@ -71,6 +58,29 @@ function ProfileMenu() {
     if (open) document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [open]);
+
+  useEffect(() => {
+    function refreshSettings() {
+      setSettings(readDisplaySettings());
+    }
+
+    window.addEventListener(settingsChangedEvent, refreshSettings);
+    window.addEventListener("storage", refreshSettings);
+    return () => {
+      window.removeEventListener(settingsChangedEvent, refreshSettings);
+      window.removeEventListener("storage", refreshSettings);
+    };
+  }, []);
+
+  async function handleLogout() {
+    try {
+      setLoggingOut(true);
+      await logout();
+    } finally {
+      setOpen(false);
+      setLoggingOut(false);
+    }
+  }
 
   return (
     <div className="relative" ref={ref}>
@@ -113,7 +123,7 @@ function ProfileMenu() {
               to="/settings"
             >
               <User className="h-4 w-4 text-muted-foreground" />
-              Mon profil
+              {user?.username || "Mon profil"}
             </Link>
           </div>
 
@@ -121,14 +131,12 @@ function ProfileMenu() {
           <div className="border-t border-border p-1">
             <button
               className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-red-600 transition-smooth hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
-              onClick={() => {
-                setOpen(false);
-                window.location.reload();
-              }}
+              disabled={loggingOut}
+              onClick={() => void handleLogout()}
               type="button"
             >
               <LogOut className="h-4 w-4" />
-              Déconnecter
+              {loggingOut ? "Déconnexion..." : "Déconnecter"}
             </button>
           </div>
         </div>
@@ -138,73 +146,26 @@ function ProfileMenu() {
 }
 
 function ThemeMenu() {
-  const [open, setOpen] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>(() => readStoredTheme());
-  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     applyTheme(theme);
     window.localStorage.setItem(themeStorageKey, theme);
   }, [theme]);
 
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (ref.current && !ref.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-    if (open) document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [open]);
-
   const ActiveIcon = theme === "dark" ? Moon : Sun;
+  const nextTheme = theme === "dark" ? "light" : "dark";
+  const nextThemeLabel = nextTheme === "dark" ? "sombre" : "clair";
 
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        aria-label="Changer le thème"
-        className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-muted-foreground transition-smooth hover:bg-blue-50 hover:text-primary dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-        onClick={() => setOpen((current) => !current)}
-        type="button"
-      >
-        <ActiveIcon className="h-5 w-5" />
-      </button>
-
-      {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-48 animate-fade-in rounded-lg border border-border bg-white p-1 shadow-xl dark:bg-slate-900">
-          <ThemeOption icon={Sun} label="Clair" mode="light" selected={theme === "light"} setTheme={setTheme} />
-          <ThemeOption icon={Moon} label="Sombre" mode="dark" selected={theme === "dark"} setTheme={setTheme} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ThemeOption({
-  icon: Icon,
-  label,
-  mode,
-  selected,
-  setTheme,
-}: {
-  icon: typeof Sun;
-  label: string;
-  mode: ThemeMode;
-  selected: boolean;
-  setTheme: (theme: ThemeMode) => void;
-}) {
   return (
     <button
-      className={cn(
-        "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm font-semibold transition-smooth",
-        selected ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-muted",
-      )}
-      onClick={() => setTheme(mode)}
+      aria-label={`Passer au thème ${nextThemeLabel}`}
+      className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-muted-foreground transition-smooth hover:bg-blue-50 hover:text-primary dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+      onClick={() => setTheme(nextTheme)}
+      title={`Passer au thème ${nextThemeLabel}`}
       type="button"
     >
-      <Icon className="h-4 w-4" />
-      <span className="flex-1">{label}</span>
-      {selected && <Check className="h-4 w-4" />}
+      <ActiveIcon className="h-5 w-5" />
     </button>
   );
 }

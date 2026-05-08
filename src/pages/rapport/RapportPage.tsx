@@ -21,11 +21,11 @@ const SETTINGS_KEY = "rentaldesk:settings";
 function readAgencyName(): string {
   try {
     const stored = localStorage.getItem(SETTINGS_KEY);
-    if (!stored) return "RentalDesk";
+    if (!stored) return "Massar Location";
     const parsed = JSON.parse(stored) as { agencyName?: string };
-    return parsed.agencyName?.trim() || "RentalDesk";
+    return parsed.agencyName?.trim() || "Massar Location";
   } catch {
-    return "RentalDesk";
+    return "Massar Location";
   }
 }
 

@@ -1,5 +1,6 @@
 import {
   ArrowLeftRight,
+  Archive,
   BarChart3,
   Banknote,
   Brain,
@@ -19,11 +20,12 @@ export const navigationItems = [
   { label: "Paiements", path: "/payments", icon: Banknote },
   { label: "Rapport CA", path: "/rapport", icon: BarChart3 },
   { label: "Mouvement", path: "/mouvement", icon: ArrowLeftRight },
-  { label: "Prévisions IA", path: "/ai-forecast", icon: Brain },
+  { label: "Autre", path: "/ai-forecast", icon: Brain },
   { label: "Contrats", path: "/contracts", icon: FileText },
+  { label: "Archive", path: "/archive", icon: Archive },
 ];
 
-export const appName = "RentalDesk";
+export const appName = "Massar Location";
 
 export const dashboardCards = [
   { label: "Total voitures", valueKey: "totalCars", icon: Car },

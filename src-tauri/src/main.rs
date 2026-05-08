@@ -1,7 +1,11 @@
+use pbkdf2::pbkdf2_hmac;
+use rand::{rngs::OsRng, RngCore};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
+use sha2::Sha256;
 use std::{
+    fmt::Write,
     fs,
     path::{Path, PathBuf},
     process::Command,
@@ -20,9 +24,69 @@ const MIGRATION_RESERVATION_SECOND_CLIENT: &str =
     include_str!("../../prisma/migrations/20260501020000_reservation_second_client/migration.sql");
 const MIGRATION_CLIENT_IS_ACTIVE: &str =
     include_str!("../../prisma/migrations/20260502000000_client_is_active/migration.sql");
+const MIGRATION_AUTH_USERS: &str =
+    include_str!("../../prisma/migrations/20260505000000_auth_users/migration.sql");
+const MIGRATION_ARCHIVE_FIELDS: &str =
+    include_str!("../../prisma/migrations/20260507000000_archive_fields/migration.sql");
+const PASSWORD_ITERATIONS: u32 = 120_000;
+const DEV_DEFAULT_FULL_NAME: &str = "Dev Admin";
+const DEV_DEFAULT_USERNAME: &str = "admin";
+const DEV_DEFAULT_PASSWORD: &str = "admin12345";
 
 struct AppState {
     db: Mutex<Connection>,
+    auth_user: Mutex<Option<AuthUser>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AuthUser {
+    id: i32,
+    full_name: String,
+    username: String,
+}
+
+#[derive(Debug)]
+struct StoredUser {
+    id: i32,
+    full_name: String,
+    username: String,
+    password_salt: String,
+    password_hash: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AuthState {
+    authenticated: bool,
+    requires_setup: bool,
+    user: Option<AuthUser>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SeedSampleDataResult {
+    success: bool,
+    cars_created: i32,
+    clients_created: i32,
+    reservations_created: i32,
+    payments_created: i32,
+    message: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RegisterUserDto {
+    full_name: String,
+    username: String,
+    password: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LoginDto {
+    username: String,
+    password: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -195,6 +259,32 @@ struct DashboardStats {
     technical_visit_alerts: i32,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ArchiveStats {
+    total: i32,
+    clients: i32,
+    cars: i32,
+    reservations: i32,
+    payments: i32,
+    contracts: i32,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ArchiveItem {
+    id: i32,
+    #[serde(rename = "type")]
+    item_type: String,
+    title: String,
+    subtitle: Option<String>,
+    description: Option<String>,
+    archived_at: Option<String>,
+    archived_reason: Option<String>,
+    status: Option<String>,
+    original_data: JsonValue,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct UpdateReservationStatusDto {
@@ -295,7 +385,32 @@ fn init_db() -> Result<Connection, String> {
             .map_err(|error| error.to_string())?;
     }
 
+    if !has_table(&connection, "User") {
+        connection
+            .execute_batch(MIGRATION_AUTH_USERS)
+            .map_err(|error| error.to_string())?;
+    }
+
+    if !has_column(&connection, "Client", "archived") {
+        connection
+            .execute_batch(MIGRATION_ARCHIVE_FIELDS)
+            .map_err(|error| error.to_string())?;
+    }
+
+    seed_default_user_if_empty(&connection)?;
+
     Ok(connection)
+}
+
+fn has_table(connection: &Connection, table: &str) -> bool {
+    connection
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+            params![table],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|count| count > 0)
+        .unwrap_or(false)
 }
 
 fn has_column(connection: &Connection, table: &str, column: &str) -> bool {
@@ -360,6 +475,131 @@ fn get_contract_by_id(connection: &Connection, id: i64) -> Result<Contract, Stri
             map_contract,
         )
         .map_err(|error| error.to_string())
+}
+
+fn get_user_by_username(connection: &Connection, username: &str) -> Result<Option<StoredUser>, String> {
+    match connection.query_row(
+        "SELECT id, fullName, username, passwordSalt, passwordHash FROM User WHERE lower(username) = lower(?1)",
+        params![username],
+        |row| {
+            Ok(StoredUser {
+                id: row.get(0)?,
+                full_name: row.get(1)?,
+                username: row.get(2)?,
+                password_salt: row.get(3)?,
+                password_hash: row.get(4)?,
+            })
+        },
+    ) {
+        Ok(user) => Ok(Some(user)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+fn count_users(connection: &Connection) -> Result<i64, String> {
+    connection
+        .query_row("SELECT COUNT(*) FROM User", [], |row| row.get(0))
+        .map_err(|error| error.to_string())
+}
+
+fn seed_default_user_if_empty(connection: &Connection) -> Result<(), String> {
+    if count_users(connection)? > 0 {
+        return Ok(());
+    }
+
+    let salt = generate_password_salt();
+    let hash = hash_password(DEV_DEFAULT_PASSWORD, &salt)?;
+    connection
+        .execute(
+            "INSERT INTO User (fullName, username, passwordSalt, passwordHash, createdAt, updatedAt)
+             VALUES (?1, ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+            params![
+                DEV_DEFAULT_FULL_NAME,
+                normalize_username(DEV_DEFAULT_USERNAME),
+                salt,
+                hash
+            ],
+        )
+        .map_err(map_user_db_error)?;
+
+    Ok(())
+}
+
+fn normalize_username(username: &str) -> String {
+    username.trim().to_lowercase()
+}
+
+fn validate_registration_input(input: &RegisterUserDto) -> Result<(), String> {
+    if input.full_name.trim().len() < 2 {
+        return Err("Le nom complet doit contenir au moins 2 caractères.".to_string());
+    }
+    let username = normalize_username(&input.username);
+    if username.len() < 3 {
+        return Err("Le nom d'utilisateur doit contenir au moins 3 caractères.".to_string());
+    }
+    if !username
+        .chars()
+        .all(|value| value.is_ascii_alphanumeric() || matches!(value, '.' | '_' | '-'))
+    {
+        return Err(
+            "Le nom d'utilisateur accepte uniquement lettres, chiffres, point, tiret et underscore."
+                .to_string(),
+        );
+    }
+    if input.password.chars().count() < 8 {
+        return Err("Le mot de passe doit contenir au moins 8 caractères.".to_string());
+    }
+    Ok(())
+}
+
+fn generate_password_salt() -> String {
+    let mut salt = [0_u8; 16];
+    OsRng.fill_bytes(&mut salt);
+    encode_hex(&salt)
+}
+
+fn hash_password(password: &str, salt_hex: &str) -> Result<String, String> {
+    let salt = decode_hex(salt_hex)?;
+    let mut output = [0_u8; 32];
+    pbkdf2_hmac::<Sha256>(password.as_bytes(), &salt, PASSWORD_ITERATIONS, &mut output);
+    Ok(encode_hex(&output))
+}
+
+fn encode_hex(bytes: &[u8]) -> String {
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        let _ = write!(&mut output, "{byte:02x}");
+    }
+    output
+}
+
+fn decode_hex(value: &str) -> Result<Vec<u8>, String> {
+    if value.len() % 2 != 0 {
+        return Err("Données de sécurité invalides.".to_string());
+    }
+
+    let mut bytes = Vec::with_capacity(value.len() / 2);
+    for index in (0..value.len()).step_by(2) {
+        let byte = u8::from_str_radix(&value[index..index + 2], 16)
+            .map_err(|_| "Données de sécurité invalides.".to_string())?;
+        bytes.push(byte);
+    }
+    Ok(bytes)
+}
+
+fn verify_password(password: &str, salt_hex: &str, expected_hash: &str) -> Result<bool, String> {
+    let candidate = hash_password(password, salt_hex)?;
+    Ok(candidate == expected_hash)
+}
+
+fn require_authenticated(state: &tauri::State<'_, AppState>) -> Result<AuthUser, String> {
+    state
+        .auth_user
+        .lock()
+        .map_err(|error| error.to_string())?
+        .clone()
+        .ok_or_else(|| "Authentification requise.".to_string())
 }
 
 fn map_car(row: &rusqlite::Row<'_>) -> rusqlite::Result<Car> {
@@ -485,10 +725,324 @@ fn generate_contract_for_reservation(
 }
 
 #[tauri::command]
+fn get_auth_state(state: tauri::State<'_, AppState>) -> Result<AuthState, String> {
+    let connection = state.db.lock().map_err(|error| error.to_string())?;
+    let requires_setup = count_users(&connection)? == 0;
+    drop(connection);
+
+    let user = state
+        .auth_user
+        .lock()
+        .map_err(|error| error.to_string())?
+        .clone();
+
+    Ok(AuthState {
+        authenticated: user.is_some(),
+        requires_setup,
+        user,
+    })
+}
+
+#[tauri::command]
+fn register_user(
+    state: tauri::State<'_, AppState>,
+    data: RegisterUserDto,
+) -> Result<AuthState, String> {
+    validate_registration_input(&data)?;
+    let connection = state.db.lock().map_err(|error| error.to_string())?;
+
+    if count_users(&connection)? > 0 {
+        return Err("Un compte existe déjà. Connectez-vous pour continuer.".to_string());
+    }
+
+    let username = normalize_username(&data.username);
+    let salt = generate_password_salt();
+    let hash = hash_password(&data.password, &salt)?;
+
+    connection
+        .execute(
+            "INSERT INTO User (fullName, username, passwordSalt, passwordHash, createdAt, updatedAt)
+             VALUES (?1, ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+            params![data.full_name.trim(), username, salt, hash],
+        )
+        .map_err(map_user_db_error)?;
+
+    let auth_user = AuthUser {
+        id: connection.last_insert_rowid() as i32,
+        full_name: data.full_name.trim().to_string(),
+        username,
+    };
+    drop(connection);
+
+    *state.auth_user.lock().map_err(|error| error.to_string())? = Some(auth_user.clone());
+
+    Ok(AuthState {
+        authenticated: true,
+        requires_setup: false,
+        user: Some(auth_user),
+    })
+}
+
+#[tauri::command]
+fn login_user(state: tauri::State<'_, AppState>, data: LoginDto) -> Result<AuthState, String> {
+    let connection = state.db.lock().map_err(|error| error.to_string())?;
+    let requires_setup = count_users(&connection)? == 0;
+    if requires_setup {
+        return Ok(AuthState {
+            authenticated: false,
+            requires_setup: true,
+            user: None,
+        });
+    }
+
+    let username = normalize_username(&data.username);
+    let stored_user = get_user_by_username(&connection, &username)?
+        .ok_or_else(|| "Identifiants invalides.".to_string())?;
+
+    if !verify_password(&data.password, &stored_user.password_salt, &stored_user.password_hash)? {
+        return Err("Identifiants invalides.".to_string());
+    }
+
+    connection
+        .execute(
+            "UPDATE User SET lastLoginAt = strftime('%Y-%m-%dT%H:%M:%fZ','now'), updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+            params![stored_user.id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    let auth_user = AuthUser {
+        id: stored_user.id,
+        full_name: stored_user.full_name,
+        username: stored_user.username,
+    };
+    drop(connection);
+
+    *state.auth_user.lock().map_err(|error| error.to_string())? = Some(auth_user.clone());
+
+    Ok(AuthState {
+        authenticated: true,
+        requires_setup: false,
+        user: Some(auth_user),
+    })
+}
+
+#[tauri::command]
+fn logout_user(state: tauri::State<'_, AppState>) -> Result<AuthState, String> {
+    let connection = state.db.lock().map_err(|error| error.to_string())?;
+    let requires_setup = count_users(&connection)? == 0;
+    drop(connection);
+
+    *state.auth_user.lock().map_err(|error| error.to_string())? = None;
+
+    Ok(AuthState {
+        authenticated: false,
+        requires_setup,
+        user: None,
+    })
+}
+
+#[tauri::command]
+fn seed_ai_sample_data(state: tauri::State<'_, AppState>) -> Result<SeedSampleDataResult, String> {
+    let _ = require_authenticated(&state)?;
+    let connection = state.db.lock().map_err(|error| error.to_string())?;
+    let seed_index = count_users(&connection)? + count(&connection, "SELECT COUNT(*) FROM Reservation")? as i64;
+
+    let brands_models = [
+        ("Toyota", "Yaris", 105.0),
+        ("Hyundai", "i20", 110.0),
+        ("Renault", "Clio", 98.0),
+        ("Peugeot", "208", 112.0),
+        ("Kia", "Picanto", 94.0),
+        ("Volkswagen", "Polo", 118.0),
+        ("Seat", "Ibiza", 108.0),
+        ("Dacia", "Sandero", 89.0),
+    ];
+    let client_names = [
+        "Amine Ben Salem",
+        "Sarra Gharbi",
+        "Nour Trabelsi",
+        "Walid Ben Hmida",
+        "Meriem Khelifi",
+        "Youssef Jaziri",
+        "Ons Ben Yedder",
+        "Karim Toumi",
+        "Rania Sassi",
+        "Hamza Mzoughi",
+        "Aicha Ferjani",
+        "Sami Kammoun",
+        "Ines Rekik",
+        "Mehdi Chatti",
+        "Nesrine Ayadi",
+        "Bilel Dhouib",
+        "Imen Charfi",
+        "Skander Achour",
+        "Farah Abid",
+        "Aziz Ben Amor",
+        "Rim Hentati",
+        "Houssem Bouraoui",
+        "Nada Mhamdi",
+        "Ghaith Sellami",
+    ];
+
+    let mut car_ids = Vec::new();
+    let mut client_ids = Vec::new();
+
+    for (index, (brand, model, daily_price)) in brands_models.iter().enumerate() {
+        let registration = format!("ML-{:03}-{}", seed_index + index as i64 + 1, 200 + index);
+        connection
+            .execute(
+                "INSERT INTO Car (brand, model, registrationNumber, year, fuelType, transmission, dailyPrice, status, mileage, imageUrl, insuranceExpiryDate, technicalVisitExpiryDate, createdAt, updatedAt)
+                 VALUES (?1, ?2, ?3, ?4, 'ESSENCE', ?5, ?6, 'AVAILABLE', ?7, NULL, ?8, ?9, strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+                params![
+                    brand,
+                    model,
+                    registration,
+                    2020 + (index as i32 % 5),
+                    if index % 2 == 0 { "MANUAL" } else { "AUTOMATIC" },
+                    daily_price,
+                    25_000 + (index as i32 * 7_200),
+                    iso_days_ago(-(30 + index as i64)),
+                    iso_days_ago(-(45 + index as i64))
+                ],
+            )
+            .map_err(|error| error.to_string())?;
+        car_ids.push(connection.last_insert_rowid() as i32);
+    }
+
+    for (index, full_name) in client_names.iter().enumerate() {
+        let phone = format!("55{:06}", ((seed_index as usize + index + 1) % 900_000) + 100_000);
+        connection
+            .execute(
+                "INSERT INTO Client (fullName, phone, cin, passportNumber, drivingLicense, drivingLicenseDate, cinIssueDate, cinIssuePlace, birthDate, birthPlace, nationality, address, isActive, createdAt, updatedAt)
+                 VALUES (?1, ?2, ?3, NULL, ?4, ?5, ?6, 'Tunis', ?7, 'Tunis', 'Tunisienne', ?8, true, strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+                params![
+                    full_name,
+                    phone,
+                    format!("CIN{:06}", seed_index + index as i64 + 1),
+                    format!("DL{:06}", seed_index + index as i64 + 1),
+                    iso_days_ago(3650 + index as i64 * 11),
+                    iso_days_ago(2200 + index as i64 * 7),
+                    iso_days_ago(9000 + index as i64 * 17),
+                    format!("Adresse {} - Tunis", index + 1),
+                ],
+            )
+            .map_err(map_client_db_error)?;
+        client_ids.push(connection.last_insert_rowid() as i32);
+    }
+
+    let mut reservations_created = 0_i32;
+    let mut payments_created = 0_i32;
+
+    for index in 0..96 {
+        let client_id = client_ids[index % client_ids.len()];
+        let second_client_id = if index % 5 == 0 {
+            Some(client_ids[(index + 3) % client_ids.len()])
+        } else {
+            None
+        };
+        let car_id = car_ids[index % car_ids.len()];
+        let duration_days = 2 + (index % 6) as i32;
+        let start_days_ago = 220 - (index as i64 * 2);
+        let start_hour = 8 + (index % 9) as i64;
+        let end_hour = 9 + ((index + 2) % 8) as i64;
+        let daily_price = brands_models[index % brands_models.len()].2 + ((index % 4) as f64 * 6.5);
+        let total_price = daily_price * duration_days as f64;
+        let deposit_amount = if index % 4 == 0 { 500.0 } else { 300.0 };
+        let pickup_mileage = 30_000 + (index as i32 * 180);
+        let return_mileage = pickup_mileage + 220 + ((index % 6) as i32 * 35);
+        let start_date = iso_datetime_days_ago(start_days_ago, start_hour);
+        let end_date = iso_datetime_days_ago(start_days_ago - duration_days as i64, end_hour);
+
+        connection
+            .execute(
+                "INSERT INTO Reservation (clientId, secondClientId, carId, startDate, endDate, dailyPrice, totalPrice, depositAmount, status, pickupMileage, returnMileage, pickupFuelLevel, returnFuelLevel, notes, createdAt, updatedAt)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'COMPLETED', ?9, ?10, 'FULL', 'HALF', ?11, strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+                params![
+                    client_id,
+                    second_client_id,
+                    car_id,
+                    start_date,
+                    end_date,
+                    daily_price,
+                    total_price,
+                    deposit_amount,
+                    pickup_mileage,
+                    return_mileage,
+                    format!("Réservation test ML {}", index + 1),
+                ],
+            )
+            .map_err(|error| error.to_string())?;
+        let reservation_id = connection.last_insert_rowid() as i32;
+        reservations_created += 1;
+
+        if deposit_amount > 0.0 {
+            connection
+                .execute(
+                    "INSERT INTO Payment (reservationId, amount, type, method, paymentDate, note, createdAt)
+                     VALUES (?1, ?2, 'DEPOSIT', 'CASH', ?3, 'Caution test ML', strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+                    params![
+                        reservation_id,
+                        deposit_amount,
+                        iso_datetime_days_ago(start_days_ago + 1, 10)
+                    ],
+                )
+                .map_err(|error| error.to_string())?;
+            payments_created += 1;
+        }
+
+        connection
+            .execute(
+                "INSERT INTO Payment (reservationId, amount, type, method, paymentDate, note, createdAt)
+                 VALUES (?1, ?2, 'RENTAL_PAYMENT', ?3, ?4, 'Paiement location test ML', strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+                params![
+                    reservation_id,
+                    total_price,
+                    if index % 3 == 0 { "CARD" } else if index % 3 == 1 { "CASH" } else { "TRANSFER" },
+                    iso_datetime_days_ago(start_days_ago - duration_days as i64 + 1, 15)
+                ],
+            )
+            .map_err(|error| error.to_string())?;
+        payments_created += 1;
+
+        if index % 7 == 0 {
+            let refund_amount = if index % 14 == 0 { 250.0 } else { deposit_amount };
+            connection
+                .execute(
+                    "INSERT INTO Payment (reservationId, amount, type, method, paymentDate, note, createdAt)
+                     VALUES (?1, ?2, 'DEPOSIT_REFUND', 'CASH', ?3, 'Remboursement test ML', strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+                    params![
+                        reservation_id,
+                        refund_amount,
+                        iso_datetime_days_ago(start_days_ago - duration_days as i64 + 2, 11)
+                    ],
+                )
+                .map_err(|error| error.to_string())?;
+            payments_created += 1;
+        }
+    }
+
+    Ok(SeedSampleDataResult {
+        success: true,
+        cars_created: car_ids.len() as i32,
+        clients_created: client_ids.len() as i32,
+        reservations_created,
+        payments_created,
+        message: format!(
+            "{} voitures, {} clients, {} réservations et {} paiements de test ont été générés.",
+            car_ids.len(),
+            client_ids.len(),
+            reservations_created,
+            payments_created
+        ),
+    })
+}
+
+#[tauri::command]
 fn get_cars(state: tauri::State<'_, AppState>) -> Result<Vec<Car>, String> {
+    let _ = require_authenticated(&state)?;
     let connection = state.db.lock().map_err(|error| error.to_string())?;
     let mut statement = connection
-        .prepare("SELECT id, brand, model, registrationNumber, year, fuelType, transmission, dailyPrice, status, mileage, imageUrl, insuranceExpiryDate, technicalVisitExpiryDate, createdAt, updatedAt FROM Car ORDER BY createdAt DESC")
+        .prepare("SELECT id, brand, model, registrationNumber, year, fuelType, transmission, dailyPrice, status, mileage, imageUrl, insuranceExpiryDate, technicalVisitExpiryDate, createdAt, updatedAt FROM Car WHERE archived = 0 OR archived IS NULL ORDER BY createdAt DESC")
         .map_err(|error| error.to_string())?;
     let rows = statement
         .query_map([], map_car)
@@ -500,6 +1054,7 @@ fn get_cars(state: tauri::State<'_, AppState>) -> Result<Vec<Car>, String> {
 
 #[tauri::command]
 fn create_car(state: tauri::State<'_, AppState>, data: CreateCarDto) -> Result<Car, String> {
+    let _ = require_authenticated(&state)?;
     let connection = state.db.lock().map_err(|error| error.to_string())?;
     connection
         .execute(
@@ -531,6 +1086,7 @@ fn update_car(
     id: i32,
     data: CreateCarDto,
 ) -> Result<Car, String> {
+    let _ = require_authenticated(&state)?;
     let connection = state.db.lock().map_err(|error| error.to_string())?;
     connection
         .execute(
@@ -567,6 +1123,7 @@ fn change_car_status(
     id: i32,
     status: String,
 ) -> Result<Car, String> {
+    let _ = require_authenticated(&state)?;
     let connection = state.db.lock().map_err(|error| error.to_string())?;
     connection
         .execute(
@@ -580,9 +1137,13 @@ fn change_car_status(
 
 #[tauri::command]
 fn delete_car(state: tauri::State<'_, AppState>, id: i32) -> Result<(), String> {
+    let _ = require_authenticated(&state)?;
     let connection = state.db.lock().map_err(|error| error.to_string())?;
     connection
-        .execute("DELETE FROM Car WHERE id = ?1", params![id])
+        .execute(
+            "UPDATE Car SET archived = true, archivedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now'), archivedReason = 'Suppression logique', updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+            params![id],
+        )
         .map_err(|error| error.to_string())?;
 
     Ok(())
@@ -590,9 +1151,10 @@ fn delete_car(state: tauri::State<'_, AppState>, id: i32) -> Result<(), String> 
 
 #[tauri::command]
 fn get_clients(state: tauri::State<'_, AppState>) -> Result<Vec<Client>, String> {
+    let _ = require_authenticated(&state)?;
     let connection = state.db.lock().map_err(|error| error.to_string())?;
     let mut statement = connection
-        .prepare("SELECT id, fullName, phone, cin, passportNumber, drivingLicense, drivingLicenseDate, cinIssueDate, cinIssuePlace, birthDate, birthPlace, nationality, address, isActive, createdAt, updatedAt FROM Client ORDER BY createdAt DESC")
+        .prepare("SELECT id, fullName, phone, cin, passportNumber, drivingLicense, drivingLicenseDate, cinIssueDate, cinIssuePlace, birthDate, birthPlace, nationality, address, isActive, createdAt, updatedAt FROM Client WHERE archived = 0 OR archived IS NULL ORDER BY createdAt DESC")
         .map_err(|error| error.to_string())?;
     let rows = statement
         .query_map([], map_client)
@@ -607,6 +1169,7 @@ fn create_client(
     state: tauri::State<'_, AppState>,
     data: CreateClientDto,
 ) -> Result<Client, String> {
+    let _ = require_authenticated(&state)?;
     let connection = state.db.lock().map_err(|error| error.to_string())?;
     connection
         .execute(
@@ -639,6 +1202,7 @@ fn update_client(
     id: i32,
     data: CreateClientDto,
 ) -> Result<Client, String> {
+    let _ = require_authenticated(&state)?;
     let connection = state.db.lock().map_err(|error| error.to_string())?;
     connection
         .execute(
@@ -671,9 +1235,13 @@ fn update_client(
 
 #[tauri::command]
 fn delete_client(state: tauri::State<'_, AppState>, id: i32) -> Result<(), String> {
+    let _ = require_authenticated(&state)?;
     let connection = state.db.lock().map_err(|error| error.to_string())?;
     connection
-        .execute("DELETE FROM Client WHERE id = ?1", params![id])
+        .execute(
+            "UPDATE Client SET archived = true, archivedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now'), archivedReason = 'Suppression logique', updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+            params![id],
+        )
         .map_err(|error| error.to_string())?;
 
     Ok(())
@@ -681,9 +1249,10 @@ fn delete_client(state: tauri::State<'_, AppState>, id: i32) -> Result<(), Strin
 
 #[tauri::command]
 fn get_reservations(state: tauri::State<'_, AppState>) -> Result<Vec<Reservation>, String> {
+    let _ = require_authenticated(&state)?;
     let connection = state.db.lock().map_err(|error| error.to_string())?;
     let mut statement = connection
-        .prepare("SELECT id, clientId, secondClientId, carId, startDate, endDate, dailyPrice, totalPrice, depositAmount, status, pickupMileage, returnMileage, pickupFuelLevel, returnFuelLevel, notes, createdAt, updatedAt FROM Reservation ORDER BY createdAt DESC")
+        .prepare("SELECT id, clientId, secondClientId, carId, startDate, endDate, dailyPrice, totalPrice, depositAmount, status, pickupMileage, returnMileage, pickupFuelLevel, returnFuelLevel, notes, createdAt, updatedAt FROM Reservation WHERE archived = 0 OR archived IS NULL ORDER BY createdAt DESC")
         .map_err(|error| error.to_string())?;
     let rows = statement
         .query_map([], map_reservation)
@@ -698,11 +1267,12 @@ fn create_reservation(
     state: tauri::State<'_, AppState>,
     data: CreateReservationDto,
 ) -> Result<Reservation, String> {
+    let _ = require_authenticated(&state)?;
     let connection = state.db.lock().map_err(|error| error.to_string())?;
 
     let car_status: String = connection
         .query_row(
-            "SELECT status FROM Car WHERE id = ?1",
+            "SELECT status FROM Car WHERE id = ?1 AND (archived = 0 OR archived IS NULL)",
             params![data.car_id],
             |row| row.get(0),
         )
@@ -759,6 +1329,7 @@ fn create_reservation(
 
 #[tauri::command]
 fn deactivate_client(state: tauri::State<'_, AppState>, id: i32) -> Result<Client, String> {
+    let _ = require_authenticated(&state)?;
     let connection = state.db.lock().map_err(|error| error.to_string())?;
     connection
         .execute(
@@ -772,6 +1343,7 @@ fn deactivate_client(state: tauri::State<'_, AppState>, id: i32) -> Result<Clien
 
 #[tauri::command]
 fn reactivate_client(state: tauri::State<'_, AppState>, id: i32) -> Result<Client, String> {
+    let _ = require_authenticated(&state)?;
     let connection = state.db.lock().map_err(|error| error.to_string())?;
     connection
         .execute(
@@ -789,6 +1361,7 @@ fn update_reservation(
     id: i32,
     data: CreateReservationDto,
 ) -> Result<Reservation, String> {
+    let _ = require_authenticated(&state)?;
     let connection = state.db.lock().map_err(|error| error.to_string())?;
     let current_status: String = connection
         .query_row(
@@ -798,13 +1371,13 @@ fn update_reservation(
         )
         .map_err(|_| "Réservation introuvable".to_string())?;
 
-    if current_status != "EN_ATTENTE" {
-        return Err("Seules les réservations en attente peuvent être modifiées.".to_string());
+    if current_status == "ONGOING" {
+        return Err("Une location en cours doit être clôturée avant modification.".to_string());
     }
 
     let car_status: String = connection
         .query_row(
-            "SELECT status FROM Car WHERE id = ?1",
+            "SELECT status FROM Car WHERE id = ?1 AND (archived = 0 OR archived IS NULL)",
             params![data.car_id],
             |row| row.get(0),
         )
@@ -868,6 +1441,7 @@ fn update_reservation_status(
     id: i32,
     data: UpdateReservationStatusDto,
 ) -> Result<Reservation, String> {
+    let _ = require_authenticated(&state)?;
     let connection = state.db.lock().map_err(|error| error.to_string())?;
     let car_id: i32 = connection
         .query_row(
@@ -912,6 +1486,7 @@ fn update_reservation_status(
 
 #[tauri::command]
 fn delete_reservation(state: tauri::State<'_, AppState>, id: i32) -> Result<(), String> {
+    let _ = require_authenticated(&state)?;
     let connection = state.db.lock().map_err(|error| error.to_string())?;
     let (car_id, status): (i32, String) = connection
         .query_row(
@@ -921,17 +1496,30 @@ fn delete_reservation(state: tauri::State<'_, AppState>, id: i32) -> Result<(), 
         )
         .map_err(|_| "Réservation introuvable.".to_string())?;
 
+    if status != "COMPLETED" && status != "CANCELLED" {
+        return Err("Seules les réservations terminées ou annulées peuvent être archivées.".to_string());
+    }
+
     connection
-        .execute("DELETE FROM Contract WHERE reservationId = ?1", params![id])
+        .execute(
+            "UPDATE Contract SET archived = true, archivedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now'), archivedReason = 'Réservation archivée' WHERE reservationId = ?1",
+            params![id],
+        )
         .map_err(|error| error.to_string())?;
     connection
-        .execute("DELETE FROM Payment WHERE reservationId = ?1", params![id])
+        .execute(
+            "UPDATE Payment SET archived = true, archivedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now'), archivedReason = 'Réservation archivée' WHERE reservationId = ?1",
+            params![id],
+        )
         .map_err(|error| error.to_string())?;
     connection
-        .execute("DELETE FROM Reservation WHERE id = ?1", params![id])
+        .execute(
+            "UPDATE Reservation SET archived = true, archivedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now'), archivedReason = 'Suppression logique', updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+            params![id],
+        )
         .map_err(|error| error.to_string())?;
 
-    if status == "ONGOING" {
+    if status == "COMPLETED" || status == "CANCELLED" {
         connection
             .execute(
                 "UPDATE Car SET status = 'AVAILABLE', updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
@@ -945,9 +1533,10 @@ fn delete_reservation(state: tauri::State<'_, AppState>, id: i32) -> Result<(), 
 
 #[tauri::command]
 fn get_payments(state: tauri::State<'_, AppState>) -> Result<Vec<Payment>, String> {
+    let _ = require_authenticated(&state)?;
     let connection = state.db.lock().map_err(|error| error.to_string())?;
     let mut statement = connection
-        .prepare("SELECT id, reservationId, amount, type, method, paymentDate, note, createdAt FROM Payment ORDER BY paymentDate DESC")
+        .prepare("SELECT id, reservationId, amount, type, method, paymentDate, note, createdAt FROM Payment WHERE archived = 0 OR archived IS NULL ORDER BY paymentDate DESC")
         .map_err(|error| error.to_string())?;
     let rows = statement
         .query_map([], map_payment)
@@ -962,6 +1551,7 @@ fn create_payment(
     state: tauri::State<'_, AppState>,
     data: CreatePaymentDto,
 ) -> Result<Payment, String> {
+    let _ = require_authenticated(&state)?;
     let connection = state.db.lock().map_err(|error| error.to_string())?;
     validate_payment_data(&connection, &data)?;
 
@@ -985,9 +1575,10 @@ fn create_payment(
 
 #[tauri::command]
 fn get_contracts(state: tauri::State<'_, AppState>) -> Result<Vec<Contract>, String> {
+    let _ = require_authenticated(&state)?;
     let connection = state.db.lock().map_err(|error| error.to_string())?;
     let mut statement = connection
-        .prepare("SELECT id, reservationId, contractNumber, pdfPath, status, generatedAt, signedAt, createdAt FROM Contract ORDER BY generatedAt DESC")
+        .prepare("SELECT id, reservationId, contractNumber, pdfPath, status, generatedAt, signedAt, createdAt FROM Contract WHERE archived = 0 OR archived IS NULL ORDER BY generatedAt DESC")
         .map_err(|error| error.to_string())?;
     let rows = statement
         .query_map([], map_contract)
@@ -1002,44 +1593,172 @@ fn generate_contract(
     state: tauri::State<'_, AppState>,
     reservation_id: i32,
 ) -> Result<Contract, String> {
+    let _ = require_authenticated(&state)?;
     let connection = state.db.lock().map_err(|error| error.to_string())?;
     generate_contract_for_reservation(&connection, reservation_id)
 }
 
 #[tauri::command]
-fn get_dashboard_stats(state: tauri::State<'_, AppState>) -> Result<DashboardStats, String> {
+fn get_archive_stats(state: tauri::State<'_, AppState>) -> Result<ArchiveStats, String> {
+    let _ = require_authenticated(&state)?;
     let connection = state.db.lock().map_err(|error| error.to_string())?;
-    let total_cars = count(&connection, "SELECT COUNT(*) FROM Car")?;
+    let clients = count(&connection, "SELECT COUNT(*) FROM Client WHERE archived = 1")?;
+    let cars = count(&connection, "SELECT COUNT(*) FROM Car WHERE archived = 1")?;
+    let reservations = count(&connection, "SELECT COUNT(*) FROM Reservation WHERE archived = 1")?;
+    let payments = count(&connection, "SELECT COUNT(*) FROM Payment WHERE archived = 1")?;
+    let contracts = count(&connection, "SELECT COUNT(*) FROM Contract WHERE archived = 1")?;
+
+    Ok(ArchiveStats {
+        total: clients + cars + reservations + payments + contracts,
+        clients,
+        cars,
+        reservations,
+        payments,
+        contracts,
+    })
+}
+
+#[tauri::command]
+fn get_archived_items(state: tauri::State<'_, AppState>) -> Result<Vec<ArchiveItem>, String> {
+    let _ = require_authenticated(&state)?;
+    let connection = state.db.lock().map_err(|error| error.to_string())?;
+    let mut items = Vec::new();
+    append_archived_clients(&connection, &mut items)?;
+    append_archived_cars(&connection, &mut items)?;
+    append_archived_reservations(&connection, &mut items)?;
+    append_archived_payments(&connection, &mut items)?;
+    append_archived_contracts(&connection, &mut items)?;
+    items.sort_by(|a, b| b.archived_at.cmp(&a.archived_at));
+    Ok(items)
+}
+
+#[tauri::command]
+fn archive_item(
+    state: tauri::State<'_, AppState>,
+    item_type: String,
+    id: i32,
+    reason: Option<String>,
+) -> Result<(), String> {
+    let _ = require_authenticated(&state)?;
+    let connection = state.db.lock().map_err(|error| error.to_string())?;
+    let reason = reason.unwrap_or_else(|| "Archivage manuel".to_string());
+
+    match item_type.as_str() {
+        "client" => archive_table_row(&connection, "Client", id, &reason),
+        "car" => archive_table_row(&connection, "Car", id, &reason),
+        "contract" => archive_table_row(&connection, "Contract", id, &reason),
+        "reservation" => {
+            let status: String = connection
+                .query_row("SELECT status FROM Reservation WHERE id = ?1", params![id], |row| row.get(0))
+                .map_err(|_| "Réservation introuvable.".to_string())?;
+            if status != "COMPLETED" && status != "CANCELLED" {
+                return Err("Seules les réservations terminées ou annulées peuvent être archivées.".to_string());
+            }
+            archive_table_row(&connection, "Reservation", id, &reason)?;
+            connection
+                .execute(
+                    "UPDATE Contract SET archived = true, archivedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now'), archivedReason = ?2 WHERE reservationId = ?1",
+                    params![id, reason],
+                )
+                .map_err(|error| error.to_string())?;
+            Ok(())
+        }
+        "payment" => {
+            let status: String = connection
+                .query_row(
+                    "SELECT Reservation.status FROM Payment INNER JOIN Reservation ON Reservation.id = Payment.reservationId WHERE Payment.id = ?1",
+                    params![id],
+                    |row| row.get(0),
+                )
+                .map_err(|_| "Paiement introuvable.".to_string())?;
+            if status != "COMPLETED" && status != "CANCELLED" {
+                return Err("Seuls les paiements liés à une réservation terminée ou annulée peuvent être archivés.".to_string());
+            }
+            archive_table_row(&connection, "Payment", id, &reason)
+        }
+        _ => Err("Type d'archive invalide.".to_string()),
+    }
+}
+
+#[tauri::command]
+fn restore_archived_item(
+    state: tauri::State<'_, AppState>,
+    item_type: String,
+    id: i32,
+) -> Result<(), String> {
+    let _ = require_authenticated(&state)?;
+    let connection = state.db.lock().map_err(|error| error.to_string())?;
+    match item_type.as_str() {
+        "client" => restore_table_row(&connection, "Client", id),
+        "car" => restore_table_row(&connection, "Car", id),
+        "reservation" => restore_table_row(&connection, "Reservation", id),
+        "payment" => restore_table_row(&connection, "Payment", id),
+        "contract" => restore_table_row(&connection, "Contract", id),
+        _ => Err("Type d'archive invalide.".to_string()),
+    }
+}
+
+#[tauri::command]
+fn permanently_delete_archived_item(
+    state: tauri::State<'_, AppState>,
+    item_type: String,
+    id: i32,
+) -> Result<(), String> {
+    let _ = require_authenticated(&state)?;
+    let connection = state.db.lock().map_err(|error| error.to_string())?;
+    match item_type.as_str() {
+        "client" => delete_archived_table_row(&connection, "Client", id),
+        "car" => delete_archived_table_row(&connection, "Car", id),
+        "reservation" => {
+            connection
+                .execute("DELETE FROM Contract WHERE reservationId = ?1 AND archived = 1", params![id])
+                .map_err(|error| error.to_string())?;
+            connection
+                .execute("DELETE FROM Payment WHERE reservationId = ?1 AND archived = 1", params![id])
+                .map_err(|error| error.to_string())?;
+            delete_archived_table_row(&connection, "Reservation", id)
+        }
+        "payment" => delete_archived_table_row(&connection, "Payment", id),
+        "contract" => delete_archived_table_row(&connection, "Contract", id),
+        _ => Err("Type d'archive invalide.".to_string()),
+    }
+}
+
+#[tauri::command]
+fn get_dashboard_stats(state: tauri::State<'_, AppState>) -> Result<DashboardStats, String> {
+    let _ = require_authenticated(&state)?;
+    let connection = state.db.lock().map_err(|error| error.to_string())?;
+    let total_cars = count(&connection, "SELECT COUNT(*) FROM Car WHERE archived = 0 OR archived IS NULL")?;
     let available_cars = count(
         &connection,
-        "SELECT COUNT(*) FROM Car WHERE status = 'AVAILABLE'",
+        "SELECT COUNT(*) FROM Car WHERE status = 'AVAILABLE' AND (archived = 0 OR archived IS NULL)",
     )?;
     let rented_cars = count(
         &connection,
-        "SELECT COUNT(*) FROM Car WHERE status = 'RENTED'",
+        "SELECT COUNT(*) FROM Car WHERE status = 'RENTED' AND (archived = 0 OR archived IS NULL)",
     )?;
     let ongoing_reservations = count(
         &connection,
-        "SELECT COUNT(*) FROM Reservation WHERE status = 'ONGOING'",
+        "SELECT COUNT(*) FROM Reservation WHERE status = 'ONGOING' AND (archived = 0 OR archived IS NULL)",
     )?;
     let today_reservations = count(
         &connection,
-        "SELECT COUNT(*) FROM Reservation WHERE date(startDate) = date('now')",
+        "SELECT COUNT(*) FROM Reservation WHERE date(startDate) = date('now') AND (archived = 0 OR archived IS NULL)",
     )?;
     let monthly_revenue: f64 = connection
         .query_row(
-            "SELECT COALESCE(SUM(amount), 0) FROM Payment WHERE type = 'RENTAL_PAYMENT' AND strftime('%Y-%m', paymentDate) = strftime('%Y-%m', 'now')",
+            "SELECT COALESCE(SUM(amount), 0) FROM Payment WHERE type = 'RENTAL_PAYMENT' AND strftime('%Y-%m', paymentDate) = strftime('%Y-%m', 'now') AND (archived = 0 OR archived IS NULL)",
             [],
             |row| row.get(0),
         )
         .map_err(|error| error.to_string())?;
     let insurance_alerts = count(
         &connection,
-        "SELECT COUNT(*) FROM Car WHERE insuranceExpiryDate IS NOT NULL AND date(insuranceExpiryDate) BETWEEN date('now') AND date('now', '+30 days')",
+        "SELECT COUNT(*) FROM Car WHERE insuranceExpiryDate IS NOT NULL AND (archived = 0 OR archived IS NULL) AND date(insuranceExpiryDate) BETWEEN date('now') AND date('now', '+30 days')",
     )?;
     let technical_visit_alerts = count(
         &connection,
-        "SELECT COUNT(*) FROM Car WHERE technicalVisitExpiryDate IS NOT NULL AND date(technicalVisitExpiryDate) BETWEEN date('now') AND date('now', '+30 days')",
+        "SELECT COUNT(*) FROM Car WHERE technicalVisitExpiryDate IS NOT NULL AND (archived = 0 OR archived IS NULL) AND date(technicalVisitExpiryDate) BETWEEN date('now') AND date('now', '+30 days')",
     )?;
 
     Ok(DashboardStats {
@@ -1059,6 +1778,219 @@ fn count(connection: &Connection, sql: &str) -> Result<i32, String> {
     connection
         .query_row(sql, [], |row| row.get(0))
         .map_err(|error| error.to_string())
+}
+
+fn archive_table_row(connection: &Connection, table: &str, id: i32, reason: &str) -> Result<(), String> {
+    let sql = format!(
+        "UPDATE {table} SET archived = true, archivedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now'), archivedReason = ?1 WHERE id = ?2"
+    );
+    connection
+        .execute(&sql, params![reason, id])
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+fn restore_table_row(connection: &Connection, table: &str, id: i32) -> Result<(), String> {
+    let sql = format!(
+        "UPDATE {table} SET archived = false, archivedAt = NULL, archivedReason = NULL WHERE id = ?1"
+    );
+    connection
+        .execute(&sql, params![id])
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+fn delete_archived_table_row(connection: &Connection, table: &str, id: i32) -> Result<(), String> {
+    let sql = format!("DELETE FROM {table} WHERE id = ?1 AND archived = 1");
+    let changed = connection
+        .execute(&sql, params![id])
+        .map_err(|error| error.to_string())?;
+    if changed == 0 {
+        return Err("Élément archivé introuvable.".to_string());
+    }
+    Ok(())
+}
+
+fn append_archived_clients(connection: &Connection, items: &mut Vec<ArchiveItem>) -> Result<(), String> {
+    let mut statement = connection
+        .prepare("SELECT id, fullName, phone, cin, passportNumber, isActive, archivedAt, archivedReason FROM Client WHERE archived = 1")
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            let id: i32 = row.get(0)?;
+            let full_name: String = row.get(1)?;
+            let phone: String = row.get(2)?;
+            let cin: Option<String> = row.get(3)?;
+            let passport: Option<String> = row.get(4)?;
+            let is_active: bool = row.get(5)?;
+            let archived_at: Option<String> = row.get(6)?;
+            let archived_reason: Option<String> = row.get(7)?;
+            Ok(ArchiveItem {
+                id,
+                item_type: "client".to_string(),
+                title: full_name.clone(),
+                subtitle: cin.clone().or(passport.clone()).or(Some(phone.clone())),
+                description: Some(format!("Téléphone : {phone}")),
+                archived_at,
+                archived_reason,
+                status: Some(if is_active { "Actif" } else { "Inactif" }.to_string()),
+                original_data: serde_json::json!({ "id": id, "fullName": full_name, "phone": phone, "cin": cin, "passportNumber": passport, "isActive": is_active }),
+            })
+        })
+        .map_err(|error| error.to_string())?;
+    items.extend(rows.collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())?);
+    Ok(())
+}
+
+fn append_archived_cars(connection: &Connection, items: &mut Vec<ArchiveItem>) -> Result<(), String> {
+    let mut statement = connection
+        .prepare("SELECT id, brand, model, registrationNumber, status, fuelType, transmission, archivedAt, archivedReason FROM Car WHERE archived = 1")
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            let id: i32 = row.get(0)?;
+            let brand: String = row.get(1)?;
+            let model: String = row.get(2)?;
+            let registration: String = row.get(3)?;
+            let status: String = row.get(4)?;
+            let fuel_type: String = row.get(5)?;
+            let transmission: String = row.get(6)?;
+            let archived_at: Option<String> = row.get(7)?;
+            let archived_reason: Option<String> = row.get(8)?;
+            Ok(ArchiveItem {
+                id,
+                item_type: "car".to_string(),
+                title: format!("{brand} {model}"),
+                subtitle: Some(registration.clone()),
+                description: Some(format!("{fuel_type} | {transmission}")),
+                archived_at,
+                archived_reason,
+                status: Some(status.clone()),
+                original_data: serde_json::json!({ "id": id, "brand": brand, "model": model, "registrationNumber": registration, "status": status, "fuelType": fuel_type, "transmission": transmission }),
+            })
+        })
+        .map_err(|error| error.to_string())?;
+    items.extend(rows.collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())?);
+    Ok(())
+}
+
+fn append_archived_reservations(connection: &Connection, items: &mut Vec<ArchiveItem>) -> Result<(), String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT Reservation.id, Reservation.startDate, Reservation.endDate, Reservation.totalPrice, Reservation.depositAmount, Reservation.status, Reservation.archivedAt, Reservation.archivedReason, Client.fullName, Car.brand, Car.model, Car.registrationNumber
+             FROM Reservation
+             LEFT JOIN Client ON Client.id = Reservation.clientId
+             LEFT JOIN Car ON Car.id = Reservation.carId
+             WHERE Reservation.archived = 1",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            let id: i32 = row.get(0)?;
+            let start_date: String = row.get(1)?;
+            let end_date: String = row.get(2)?;
+            let total_price: f64 = row.get(3)?;
+            let deposit_amount: f64 = row.get(4)?;
+            let status: String = row.get(5)?;
+            let archived_at: Option<String> = row.get(6)?;
+            let archived_reason: Option<String> = row.get(7)?;
+            let client_name: Option<String> = row.get(8)?;
+            let brand: Option<String> = row.get(9)?;
+            let model: Option<String> = row.get(10)?;
+            let registration: Option<String> = row.get(11)?;
+            Ok(ArchiveItem {
+                id,
+                item_type: "reservation".to_string(),
+                title: format!("Réservation #{id}"),
+                subtitle: client_name.clone(),
+                description: Some(format!("{} {} | {} -> {}", brand.clone().unwrap_or_default(), model.clone().unwrap_or_default(), start_date, end_date)),
+                archived_at,
+                archived_reason,
+                status: Some(status.clone()),
+                original_data: serde_json::json!({ "id": id, "client": client_name, "car": format!("{} {}", brand.unwrap_or_default(), model.unwrap_or_default()), "registrationNumber": registration, "startDate": start_date, "endDate": end_date, "totalPrice": total_price, "depositAmount": deposit_amount, "status": status }),
+            })
+        })
+        .map_err(|error| error.to_string())?;
+    items.extend(rows.collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())?);
+    Ok(())
+}
+
+fn append_archived_payments(connection: &Connection, items: &mut Vec<ArchiveItem>) -> Result<(), String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT Payment.id, Payment.reservationId, Payment.amount, Payment.type, Payment.method, Payment.paymentDate, Payment.archivedAt, Payment.archivedReason, Client.fullName
+             FROM Payment
+             LEFT JOIN Reservation ON Reservation.id = Payment.reservationId
+             LEFT JOIN Client ON Client.id = Reservation.clientId
+             WHERE Payment.archived = 1",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            let id: i32 = row.get(0)?;
+            let reservation_id: i32 = row.get(1)?;
+            let amount: f64 = row.get(2)?;
+            let payment_type: String = row.get(3)?;
+            let method: String = row.get(4)?;
+            let payment_date: String = row.get(5)?;
+            let archived_at: Option<String> = row.get(6)?;
+            let archived_reason: Option<String> = row.get(7)?;
+            let client_name: Option<String> = row.get(8)?;
+            Ok(ArchiveItem {
+                id,
+                item_type: "payment".to_string(),
+                title: format!("{amount:.2} DT"),
+                subtitle: Some(format!("Réservation #{reservation_id}")),
+                description: Some(format!("{payment_type} | {method} | {payment_date}")),
+                archived_at,
+                archived_reason,
+                status: Some(payment_type.clone()),
+                original_data: serde_json::json!({ "id": id, "reservationId": reservation_id, "client": client_name, "amount": amount, "type": payment_type, "method": method, "paymentDate": payment_date }),
+            })
+        })
+        .map_err(|error| error.to_string())?;
+    items.extend(rows.collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())?);
+    Ok(())
+}
+
+fn append_archived_contracts(connection: &Connection, items: &mut Vec<ArchiveItem>) -> Result<(), String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT Contract.id, Contract.reservationId, Contract.contractNumber, Contract.status, Contract.generatedAt, Contract.archivedAt, Contract.archivedReason, Client.fullName, Car.brand, Car.model
+             FROM Contract
+             LEFT JOIN Reservation ON Reservation.id = Contract.reservationId
+             LEFT JOIN Client ON Client.id = Reservation.clientId
+             LEFT JOIN Car ON Car.id = Reservation.carId
+             WHERE Contract.archived = 1",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            let id: i32 = row.get(0)?;
+            let reservation_id: i32 = row.get(1)?;
+            let contract_number: String = row.get(2)?;
+            let status: String = row.get(3)?;
+            let generated_at: String = row.get(4)?;
+            let archived_at: Option<String> = row.get(5)?;
+            let archived_reason: Option<String> = row.get(6)?;
+            let client_name: Option<String> = row.get(7)?;
+            let brand: Option<String> = row.get(8)?;
+            let model: Option<String> = row.get(9)?;
+            Ok(ArchiveItem {
+                id,
+                item_type: "contract".to_string(),
+                title: contract_number.clone(),
+                subtitle: client_name.clone(),
+                description: Some(format!("Réservation #{reservation_id} | {} {}", brand.clone().unwrap_or_default(), model.clone().unwrap_or_default())),
+                archived_at,
+                archived_reason,
+                status: Some(status.clone()),
+                original_data: serde_json::json!({ "id": id, "reservationId": reservation_id, "contractNumber": contract_number, "client": client_name, "car": format!("{} {}", brand.unwrap_or_default(), model.unwrap_or_default()), "status": status, "generatedAt": generated_at }),
+            })
+        })
+        .map_err(|error| error.to_string())?;
+    items.extend(rows.collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())?);
+    Ok(())
 }
 
 fn validate_reservation_data(data: &CreateReservationDto) -> Result<(), String> {
@@ -1117,7 +2049,7 @@ fn validate_payment_data(connection: &Connection, data: &CreatePaymentDto) -> Re
 
     let (total_price, deposit_amount): (f64, f64) = connection
         .query_row(
-            "SELECT totalPrice, depositAmount FROM Reservation WHERE id = ?1",
+            "SELECT totalPrice, depositAmount FROM Reservation WHERE id = ?1 AND (archived = 0 OR archived IS NULL)",
             params![data.reservation_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
@@ -1208,7 +2140,7 @@ fn ensure_client_active(
 ) -> Result<(), String> {
     let is_active: bool = connection
         .query_row(
-            "SELECT isActive FROM Client WHERE id = ?1",
+            "SELECT isActive FROM Client WHERE id = ?1 AND (archived = 0 OR archived IS NULL)",
             params![client_id],
             |row| row.get(0),
         )
@@ -1233,6 +2165,7 @@ fn has_reservation_conflict(
             "SELECT COUNT(*) FROM Reservation
              WHERE carId = ?1
                AND (?4 IS NULL OR id != ?4)
+               AND (archived = 0 OR archived IS NULL)
                AND status IN ('EN_ATTENTE', 'RESERVED', 'ONGOING')
                AND (CASE WHEN length(startDate) = 10 THEN startDate || 'T00:00:00.000Z' ELSE startDate END) < ?3
                AND (CASE WHEN length(endDate) = 10 THEN endDate || 'T23:59:59.999Z' ELSE endDate END) > ?2",
@@ -1286,6 +2219,14 @@ fn map_client_db_error(error: rusqlite::Error) -> String {
     }
     if message.contains("Client.drivingLicense") {
         return "Ce numéro de permis existe déjà.".to_string();
+    }
+    message
+}
+
+fn map_user_db_error(error: rusqlite::Error) -> String {
+    let message = error.to_string();
+    if message.contains("User.username") {
+        return "Ce nom d'utilisateur existe déjà.".to_string();
     }
     message
 }
@@ -1408,10 +2349,12 @@ fn python_missing_value() -> JsonValue {
 
 #[tauri::command]
 fn train_ai_models(
+    state: tauri::State<'_, AppState>,
     python_path: Option<String>,
     model_path: Option<String>,
     min_reservations: Option<i64>,
 ) -> Result<JsonValue, String> {
+    let _ = require_authenticated(&state)?;
     let models_dir = resolve_models_dir(model_path)?;
     fs::create_dir_all(&models_dir).map_err(|error| error.to_string())?;
     let min_reservations_value = min_reservations.unwrap_or(30).to_string();
@@ -1433,9 +2376,11 @@ fn train_ai_models(
 
 #[tauri::command]
 fn run_ai_forecast(
+    state: tauri::State<'_, AppState>,
     python_path: Option<String>,
     model_path: Option<String>,
 ) -> Result<JsonValue, String> {
+    let _ = require_authenticated(&state)?;
     let models_dir = resolve_models_dir(model_path)?;
 
     if !models_dir.join("revenue_model.pkl").exists()
@@ -1462,9 +2407,11 @@ fn run_ai_forecast(
 
 #[tauri::command]
 fn get_ai_model_status(
+    state: tauri::State<'_, AppState>,
     python_path: Option<String>,
     model_path: Option<String>,
 ) -> Result<JsonValue, String> {
+    let _ = require_authenticated(&state)?;
     let models_dir = resolve_models_dir(model_path)?;
     let expected = ["revenue_model.pkl", "demand_model.pkl", "client_segments.pkl"];
 
@@ -1519,6 +2466,23 @@ fn format_unix_seconds(secs: i64) -> String {
     )
 }
 
+fn unix_now_seconds() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+fn iso_days_ago(days_ago: i64) -> String {
+    format!("{}T00:00:00Z", format_unix_seconds(unix_now_seconds() - days_ago * 86_400))
+}
+
+fn iso_datetime_days_ago(days_ago: i64, hour: i64) -> String {
+    let hour = hour.clamp(0, 23);
+    let secs = unix_now_seconds() - days_ago * 86_400 - (12 - hour) * 3_600;
+    format!("{}Z", format_unix_seconds(secs))
+}
+
 fn civil_from_days(days: i64) -> (i32, u32, u32) {
     let z = days + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
@@ -1537,9 +2501,16 @@ fn main() {
     let db = init_db().expect("failed to initialize local SQLite database");
 
     tauri::Builder::default()
-        .manage(AppState { db: Mutex::new(db) })
+        .manage(AppState {
+            db: Mutex::new(db),
+            auth_user: Mutex::new(None),
+        })
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
+            get_auth_state,
+            register_user,
+            login_user,
+            logout_user,
             get_cars,
             create_car,
             update_car,
@@ -1560,7 +2531,13 @@ fn main() {
             create_payment,
             get_contracts,
             generate_contract,
+            get_archive_stats,
+            get_archived_items,
+            archive_item,
+            restore_archived_item,
+            permanently_delete_archived_item,
             get_dashboard_stats,
+            seed_ai_sample_data,
             train_ai_models,
             run_ai_forecast,
             get_ai_model_status

@@ -20,7 +20,7 @@ const WHITE = rgb(1, 1, 1);
 const BLACK = rgb(0, 0, 0);
 
 export async function createRapportPdf(options: RapportPdfOptions): Promise<Uint8Array> {
-  const { agencyName = "RentalDesk", period, rows, totals, kpis } = options;
+  const { agencyName = "Massar Location", period, rows, totals, kpis } = options;
 
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -133,13 +133,13 @@ export async function createRapportPdf(options: RapportPdfOptions): Promise<Uint
   // Footer
   const generated = `Genere le ${new Date().toLocaleDateString("fr-FR")}`;
   drawText(generated, marginX, 28, 8, font, GREY);
-  drawText("RentalDesk", pageWidth - marginX - bold.widthOfTextAtSize("RentalDesk", 8), 28, 8, bold, NAVY);
+  drawText("Massar Location", pageWidth - marginX - bold.widthOfTextAtSize("Massar Location", 8), 28, 8, bold, NAVY);
 
   return pdfDoc.save();
 }
 
 export function downloadPdfBlob(bytes: Uint8Array, filename: string): void {
-  const blob = new Blob([bytes], { type: "application/pdf" });
+  const blob = new Blob([new Uint8Array(bytes)], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

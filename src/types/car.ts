@@ -14,6 +14,9 @@ export interface Car {
   imageUrl?: string | null;
   insuranceExpiryDate?: string | null;
   technicalVisitExpiryDate?: string | null;
+  archived?: boolean | null;
+  archivedAt?: string | null;
+  archivedReason?: string | null;
   createdAt: string;
   updatedAt: string;
 }

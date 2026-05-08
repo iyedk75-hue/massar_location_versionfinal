@@ -1,20 +1,35 @@
 import { differenceInCalendarDays, format, parseISO } from "date-fns";
 import { fr } from "date-fns/locale";
 
+function parseDateValue(value?: string | null) {
+  if (!value) return null;
+
+  const isoDate = parseISO(value);
+  if (Number.isFinite(isoDate.getTime())) return isoDate;
+
+  const date = new Date(value);
+  if (Number.isFinite(date.getTime())) return date;
+
+  return null;
+}
+
 export function formatDate(value?: string | null) {
-  if (!value) return "-";
-  return format(parseISO(value), "dd MMM yyyy", { locale: fr });
+  const date = parseDateValue(value);
+  if (!date) return "-";
+  return format(date, "dd MMM yyyy", { locale: fr });
 }
 
 export function formatDateTime(value?: string | null) {
-  if (!value) return "-";
+  const date = parseDateValue(value);
+  if (!date) return "-";
+
   return new Intl.DateTimeFormat("fr-FR", {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
     month: "short",
     year: "numeric",
-  }).format(new Date(value));
+  }).format(date);
 }
 
 export function formatPeriod(startDate?: string | null, endDate?: string | null) {
@@ -23,13 +38,15 @@ export function formatPeriod(startDate?: string | null, endDate?: string | null)
 }
 
 export function formatShortDateTime(value?: string | null) {
-  if (!value) return "-";
+  const date = parseDateValue(value);
+  if (!date) return "-";
+
   return new Intl.DateTimeFormat("fr-FR", {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
     month: "short",
-  }).format(new Date(value));
+  }).format(date);
 }
 
 export function formatShortPeriod(startDate?: string | null, endDate?: string | null) {
@@ -38,8 +55,11 @@ export function formatShortPeriod(startDate?: string | null, endDate?: string | 
 }
 
 export function getRentalDays(startDate: string, endDate: string) {
-  const start = parseISO(startDate);
-  const end = parseISO(endDate);
+  const start = parseDateValue(startDate);
+  const end = parseDateValue(endDate);
+
+  if (!start || !end) return 0;
+
   const duration = end.getTime() - start.getTime();
 
   if (!Number.isFinite(duration) || duration <= 0) return 0;
@@ -48,14 +68,22 @@ export function getRentalDays(startDate: string, endDate: string) {
 }
 
 export function getCalendarRentalDays(startDate: string, endDate: string) {
-  const days = differenceInCalendarDays(parseISO(endDate), parseISO(startDate));
-  if (days < 0) return 0;
+  const start = parseDateValue(startDate);
+  const end = parseDateValue(endDate);
+
+  if (!start || !end) return 0;
+
+  const days = differenceInCalendarDays(end, start);
+  if (!Number.isFinite(days) || days < 0) return 0;
   return Math.max(1, days + 1);
 }
 
 export function formatRentalDuration(startDate: string, endDate: string) {
-  const start = new Date(startDate);
-  const end = new Date(endDate);
+  const start = parseDateValue(startDate);
+  const end = parseDateValue(endDate);
+
+  if (!start || !end) return "-";
+
   const durationMinutes = Math.max(0, Math.round((end.getTime() - start.getTime()) / (60 * 1000)));
   const days = Math.floor(durationMinutes / (24 * 60));
   const hours = Math.floor((durationMinutes % (24 * 60)) / 60);
@@ -81,10 +109,8 @@ export function combineDateAndTime(date: string, time: string) {
 }
 
 export function toDateInputValue(value?: string | null) {
-  if (!value) return "";
-
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "";
+  const date = parseDateValue(value);
+  if (!date) return "";
 
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -94,17 +120,15 @@ export function toDateInputValue(value?: string | null) {
 }
 
 export function toTimeInputValue(value?: string | null) {
-  if (!value) return "";
-
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "";
+  const date = parseDateValue(value);
+  if (!date) return "";
 
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
 export function getLocalDateKey(value: string | Date) {
-  const date = value instanceof Date ? value : new Date(value);
-  if (!Number.isFinite(date.getTime())) return "";
+  const date = value instanceof Date ? value : parseDateValue(value);
+  if (!date || !Number.isFinite(date.getTime())) return "";
 
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -136,7 +160,17 @@ export function getReservationTimePosition(
   reservationStart: string,
   dayDate: Date,
 ): { topPercent: number; heightPercent: number; startTime: string; endTime: string; isOutOfRange: boolean } {
-  const resStart = new Date(reservationStart);
+  const resStart = parseDateValue(reservationStart);
+  if (!resStart) {
+    return {
+      endTime: "-",
+      heightPercent: 0,
+      isOutOfRange: true,
+      startTime: "-",
+      topPercent: 0,
+    };
+  }
+
   const startHour = resStart.getHours();
   const startMinute = resStart.getMinutes();
 

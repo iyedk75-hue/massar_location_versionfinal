@@ -56,6 +56,8 @@ export function CarsPage() {
   const [retourCar, setRetourCar] = useState<Car | null>(null);
   const [retourMileage, setRetourMileage] = useState<string>("");
   const [retourFuel, setRetourFuel] = useState<string>("Plein");
+  const [selectedCarIds, setSelectedCarIds] = useState<number[]>([]);
+  const [bulkActionsOpen, setBulkActionsOpen] = useState(false);
   const { push } = useNotifications();
   const { showToast } = useToast();
 
@@ -114,6 +116,10 @@ export function CarsPage() {
     setPage(1);
   }, [pageSize, query, status]);
 
+  useEffect(() => {
+    setSelectedCarIds((current) => current.filter((id) => cars.some((car) => car.id === id)));
+  }, [cars]);
+
   const ongoingByCarId = useMemo(
     () => new Map(reservations.filter((reservation) => reservation.status === "ONGOING").map((reservation) => [reservation.carId, reservation])),
     [reservations],
@@ -142,6 +148,21 @@ export function CarsPage() {
   const paginatedCars = filteredCars.slice((safePage - 1) * pageSize, safePage * pageSize);
   const firstItem = filteredCars.length ? (safePage - 1) * pageSize + 1 : 0;
   const lastItem = Math.min(safePage * pageSize, filteredCars.length);
+  const selectedCarIdsSet = useMemo(() => new Set(selectedCarIds), [selectedCarIds]);
+  const selectedCars = useMemo(() => cars.filter((car) => selectedCarIdsSet.has(car.id)), [cars, selectedCarIdsSet]);
+  const visibleCarIds = paginatedCars.map((car) => car.id);
+  const allVisibleCarsSelected = visibleCarIds.length > 0 && visibleCarIds.every((id) => selectedCarIdsSet.has(id));
+
+  function toggleCarSelection(id: number) {
+    setSelectedCarIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  }
+
+  function toggleVisibleCars() {
+    setSelectedCarIds((current) => {
+      if (allVisibleCarsSelected) return current.filter((id) => !visibleCarIds.includes(id));
+      return Array.from(new Set([...current, ...visibleCarIds]));
+    });
+  }
 
   async function handleSubmit(data: CreateCarDto) {
     try {
@@ -180,6 +201,31 @@ export function CarsPage() {
       await deleteCar(id);
       setCars((current) => current.filter((car) => car.id !== id));
       showToast({ title: "Voiture supprimée", type: "success" });
+    } catch (caught) {
+      showToast({ message: getErrorMessage(caught), title: "Suppression impossible", type: "error" });
+    }
+  }
+
+  async function handleSelectedCarsDelete() {
+    if (!selectedCars.length) {
+      showToast({ message: "Cochez au moins une voiture dans la liste.", title: "Aucune sélection", type: "info" });
+      setBulkActionsOpen(false);
+      return;
+    }
+
+    if (!window.confirm(`Supprimer ${selectedCars.length} voiture${selectedCars.length > 1 ? "s" : ""} sélectionnée${selectedCars.length > 1 ? "s" : ""} ?`)) {
+      setBulkActionsOpen(false);
+      return;
+    }
+
+    try {
+      await Promise.all(selectedCars.map((car) => deleteCar(car.id)));
+      const deletedIds = new Set(selectedCars.map((car) => car.id));
+
+      setCars((current) => current.filter((car) => !deletedIds.has(car.id)));
+      setSelectedCarIds([]);
+      setBulkActionsOpen(false);
+      showToast({ title: "Voitures supprimées", type: "success" });
     } catch (caught) {
       showToast({ message: getErrorMessage(caught), title: "Suppression impossible", type: "error" });
     }
@@ -301,10 +347,33 @@ export function CarsPage() {
               </option>
             ))}
           </select>
-          <Button className="h-11 rounded-lg border-slate-200 bg-white px-5 shadow-sm" variant="outline">
-            <SlidersHorizontal className="h-4 w-4" />
-            Filtres
-          </Button>
+          <div className="relative">
+            <Button
+              className="h-11 w-full rounded-lg border-slate-200 bg-white px-5 shadow-sm"
+              onClick={() => setBulkActionsOpen((current) => !current)}
+              type="button"
+              variant="outline"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              Filtres
+            </Button>
+            {bulkActionsOpen && (
+              <div className="absolute right-0 z-20 mt-2 w-56 overflow-hidden rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
+                <p className="px-2 pb-2 text-xs font-medium text-slate-500">
+                  {selectedCarIds.length} voiture{selectedCarIds.length > 1 ? "s" : ""} sélectionnée{selectedCarIds.length > 1 ? "s" : ""}
+                </p>
+                <button
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={!selectedCarIds.length}
+                  onClick={() => void handleSelectedCarsDelete()}
+                  type="button"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Supprimer sélection
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -312,6 +381,16 @@ export function CarsPage() {
             <table className="w-full min-w-[980px] text-left text-sm">
               <thead className="bg-slate-100/80 text-xs uppercase text-slate-500">
                 <tr>
+                  <th className="w-14 px-5 py-4">
+                    <input
+                      aria-label="Sélectionner les voitures visibles"
+                      checked={allVisibleCarsSelected}
+                      className="h-4 w-4 rounded border-slate-300 accent-blue-600"
+                      disabled={!visibleCarIds.length}
+                      onChange={toggleVisibleCars}
+                      type="checkbox"
+                    />
+                  </th>
                   <th className="px-5 py-4 font-semibold">Immatriculation</th>
                   <th className="px-5 py-4 font-semibold">Voiture</th>
                   <th className="px-5 py-4 font-semibold">Carburant</th>
@@ -325,7 +404,21 @@ export function CarsPage() {
               <tbody className="divide-y divide-slate-200">
                 {paginatedCars.length ? (
                   paginatedCars.map((car) => (
-                    <tr className="transition-colors hover:bg-slate-50/80" key={car.id}>
+                    <tr
+                      className={`transition-colors ${
+                        selectedCarIdsSet.has(car.id) ? "bg-blue-50/70 hover:bg-blue-50" : "hover:bg-slate-50/80"
+                      }`}
+                      key={car.id}
+                    >
+                      <td className="px-5 py-4">
+                        <input
+                          aria-label={`Sélectionner ${formatCarName(car.brand, car.model)}`}
+                          checked={selectedCarIdsSet.has(car.id)}
+                          className="h-4 w-4 rounded border-slate-300 accent-blue-600"
+                          onChange={() => toggleCarSelection(car.id)}
+                          type="checkbox"
+                        />
+                      </td>
                       <td className="px-5 py-4 font-semibold text-slate-700">
                         <RegistrationNumber value={car.registrationNumber} />
                       </td>
@@ -362,7 +455,7 @@ export function CarsPage() {
                   ))
                 ) : (
                   <tr>
-                    <td className="px-5 py-10 text-center text-muted-foreground" colSpan={8}>
+                    <td className="px-5 py-10 text-center text-muted-foreground" colSpan={9}>
                       Aucune voiture trouvée
                     </td>
                   </tr>
@@ -375,6 +468,7 @@ export function CarsPage() {
         <div className="flex flex-col gap-3 text-sm text-muted-foreground xl:flex-row xl:items-center xl:justify-between">
           <p>
             Affichage de {firstItem} à {lastItem} sur {filteredCars.length} voitures
+            {selectedCarIds.length > 0 ? ` · ${selectedCarIds.length} sélectionnée${selectedCarIds.length > 1 ? "s" : ""}` : ""}
           </p>
           <div className="flex flex-wrap items-center gap-3 xl:justify-end">
             <Pagination currentPage={safePage} onPageChange={setPage} totalPages={totalPages} />

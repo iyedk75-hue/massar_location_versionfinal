@@ -1,12 +1,28 @@
+import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { CarFront } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 import { navigationItems } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-
-const settingsStorageKey = "rentaldesk:settings";
+import { readDisplaySettings, settingsChangedEvent } from "@/utils/settings";
 
 export function Sidebar({ collapsed }: { collapsed: boolean }) {
-  const settings = readSettings();
+  const { user } = useAuth();
+  const [settings, setSettings] = useState(() => readDisplaySettings());
+  const displayName = settings.adminName || user?.fullName || "Utilisateur";
+
+  useEffect(() => {
+    function refreshSettings() {
+      setSettings(readDisplaySettings());
+    }
+
+    window.addEventListener(settingsChangedEvent, refreshSettings);
+    window.addEventListener("storage", refreshSettings);
+    return () => {
+      window.removeEventListener(settingsChangedEvent, refreshSettings);
+      window.removeEventListener("storage", refreshSettings);
+    };
+  }, []);
 
   return (
     <aside
@@ -22,7 +38,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
         {!collapsed && (
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold leading-5 text-foreground">{settings.agencyName || "Location Auto bizerte"}</p>
-            <p className="truncate text-sm leading-5 text-muted-foreground">{settings.userName || "Ahmed Mahjoub"}</p>
+            <p className="truncate text-sm leading-5 text-muted-foreground">{displayName}</p>
           </div>
         )}
       </div>
@@ -50,21 +66,4 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
       </nav>
     </aside>
   );
-}
-
-function readSettings() {
-  if (typeof window === "undefined") return { agencyName: "", userName: "" };
-
-  try {
-    const stored = window.localStorage.getItem(settingsStorageKey);
-    if (!stored) return { agencyName: "", userName: "" };
-    const settings = JSON.parse(stored) as { agencyName?: unknown; userName?: unknown };
-
-    return {
-      agencyName: typeof settings.agencyName === "string" ? settings.agencyName.trim() : "",
-      userName: typeof settings.userName === "string" ? settings.userName.trim() : "",
-    };
-  } catch {
-    return { agencyName: "", userName: "" };
-  }
 }

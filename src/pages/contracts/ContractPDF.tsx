@@ -29,7 +29,7 @@ export function ContractPDF({
       <section className="grid gap-4 md:grid-cols-2">
         <div>
           <h3 className="mb-2 font-semibold">Agence</h3>
-          <p>RentalDesk</p>
+          <p>Massar Location</p>
           <p>Tunis, Tunisie</p>
         </div>
         <div>

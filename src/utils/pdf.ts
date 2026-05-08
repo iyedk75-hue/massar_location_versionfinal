@@ -26,7 +26,7 @@ export async function createContractPdf(
   });
 
   const lines = [
-    "Agence: RentalDesk",
+    "Agence: Massar Location",
     `Reservation: #${contract.reservationId}`,
     `Client: ${details.client ? normalizeClientName(details.client.fullName) : "-"}`,
     `Telephone: ${formatPhoneNumber(details.client?.phone)}`,

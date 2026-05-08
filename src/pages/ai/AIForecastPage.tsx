@@ -12,6 +12,7 @@ import {
   Loader2,
   PlayCircle,
   RefreshCcw,
+  TestTube2,
   Sparkles,
   TrendingUp,
 } from "lucide-react";
@@ -22,6 +23,7 @@ import { useToast } from "@/hooks/useToast";
 import {
   getAIModelStatus,
   runAIForecast,
+  seedAISampleData,
   trainAIModels,
 } from "@/services/aiForecastService";
 import type {
@@ -37,6 +39,7 @@ export function AIForecastPage() {
   const { showToast } = useToast();
   const [status, setStatus] = useState<AIModelStatus | null>(null);
   const [forecast, setForecast] = useState<AIForecastResult | null>(null);
+  const [seeding, setSeeding] = useState(false);
   const [training, setTraining] = useState(false);
   const [predicting, setPredicting] = useState(false);
   const [statusLoading, setStatusLoading] = useState(true);
@@ -90,6 +93,27 @@ export function AIForecastPage() {
     }
   }
 
+  async function handleSeedSampleData() {
+    try {
+      setSeeding(true);
+      const result = await seedAISampleData();
+      showToast({
+        title: "Données de test créées",
+        message: result.message,
+        type: "success",
+      });
+      await refreshStatus();
+    } catch (error) {
+      showToast({
+        title: "Erreur génération test",
+        message: getErrorMessage(error),
+        type: "error",
+      });
+    } finally {
+      setSeeding(false);
+    }
+  }
+
   async function handlePredict() {
     try {
       setPredicting(true);
@@ -125,10 +149,10 @@ export function AIForecastPage() {
 
   return (
     <>
-      <PageHeader title="Prévisions IA">
+      <PageHeader title="Autre">
         <div className="flex flex-wrap items-center gap-2">
           <Button
-            disabled={training || predicting || !status?.trained}
+            disabled={training || predicting || seeding || !status?.trained}
             onClick={() => void handlePredict()}
             type="button"
           >
@@ -140,7 +164,20 @@ export function AIForecastPage() {
             Lancer la prédiction
           </Button>
           <Button
-            disabled={training || predicting}
+            disabled={training || predicting || seeding}
+            onClick={() => void handleSeedSampleData()}
+            type="button"
+            variant="secondary"
+          >
+            {seeding ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <TestTube2 className="h-4 w-4" />
+            )}
+            Générer des données test
+          </Button>
+          <Button
+            disabled={training || predicting || seeding}
             onClick={() => void handleTrain()}
             type="button"
             variant="outline"

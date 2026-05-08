@@ -1,6 +1,7 @@
 import { createHashRouter } from "react-router-dom";
 import { App } from "@/app/App";
 import { AIForecastPage } from "@/pages/ai/AIForecastPage";
+import { ArchivePage } from "@/pages/archive/ArchivePage";
 import { CarsPage } from "@/pages/cars/CarsPage";
 import { ClientsPage } from "@/pages/clients/ClientsPage";
 import { ContractPreview } from "@/pages/contracts/ContractPreview";
@@ -28,6 +29,7 @@ export const router = createHashRouter([
       { path: "mouvement", element: <MouvementPage /> },
       { path: "ai-forecast", element: <AIForecastPage /> },
       { path: "contracts", element: <ContractPreview /> },
+      { path: "archive", element: <ArchivePage /> },
       { path: "settings", element: <SettingsPage /> },
     ],
   },

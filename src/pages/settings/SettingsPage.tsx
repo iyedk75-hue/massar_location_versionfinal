@@ -8,8 +8,10 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/useToast";
 import { loadAISettings, saveAISettings } from "@/services/aiForecastService";
 import type { AISettings } from "@/types/aiForecast";
+import { notifySettingsChanged, settingsStorageKey } from "@/utils/settings";
 
 type SettingsFormValues = {
+  adminName: string;
   agencyName: string;
   agencyPhone: string;
   agencyEmail: string;
@@ -30,10 +32,10 @@ type SettingsFormValues = {
   vatRate: number;
 };
 
-const settingsStorageKey = "rentaldesk:settings";
 const inputClassName = "h-10 w-full rounded-md border border-input bg-white px-3 text-sm";
 
 const defaultSettings: SettingsFormValues = {
+  adminName: "",
   agencyName: "",
   agencyPhone: "",
   agencyEmail: "",
@@ -72,6 +74,7 @@ export function SettingsPage() {
   function submitForm(values: SettingsFormValues) {
     try {
       window.localStorage.setItem(settingsStorageKey, JSON.stringify(values));
+      notifySettingsChanged();
       showToast({ title: "Paramètres enregistrés", type: "success" });
     } catch (caught) {
       showToast({ message: getErrorMessage(caught), title: "Erreur paramètres", type: "error" });
@@ -110,6 +113,9 @@ export function SettingsPage() {
             </Field>
             <Field label="Téléphone">
               <Input placeholder="55 123 456" {...register("agencyPhone")} />
+            </Field>
+            <Field label="Nom admin">
+              <Input placeholder="Nom de l'administrateur" {...register("adminName")} />
             </Field>
             <Field error={errors.agencyEmail?.message} label="Email">
               <Input
@@ -280,7 +286,15 @@ function loadSettings() {
   if (!stored) return defaultSettings;
 
   try {
-    return { ...defaultSettings, ...(JSON.parse(stored) as Partial<SettingsFormValues>) };
+    const parsed = JSON.parse(stored) as Partial<SettingsFormValues> & { userName?: unknown };
+    const adminName =
+      typeof parsed.adminName === "string"
+        ? parsed.adminName
+        : typeof parsed.userName === "string"
+          ? parsed.userName
+          : defaultSettings.adminName;
+
+    return { ...defaultSettings, ...parsed, adminName };
   } catch {
     return defaultSettings;
   }

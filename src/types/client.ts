@@ -13,6 +13,9 @@ export interface Client {
   nationality?: string | null;
   address?: string | null;
   isActive: boolean;
+  archived?: boolean | null;
+  archivedAt?: string | null;
+  archivedReason?: string | null;
   createdAt: string;
   updatedAt: string;
 }

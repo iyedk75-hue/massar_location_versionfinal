@@ -19,6 +19,9 @@ export interface Reservation {
   pickupFuelLevel?: string | null;
   returnFuelLevel?: string | null;
   notes?: string | null;
+  archived?: boolean | null;
+  archivedAt?: string | null;
+  archivedReason?: string | null;
   createdAt: string;
   updatedAt: string;
   client?: Client;

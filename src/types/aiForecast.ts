@@ -79,6 +79,15 @@ export interface AIModelStatus {
   message?: string;
 }
 
+export interface AISeedSampleDataResult {
+  success: true;
+  carsCreated: number;
+  clientsCreated: number;
+  reservationsCreated: number;
+  paymentsCreated: number;
+  message: string;
+}
+
 export interface AISettings {
   enabled: boolean;
   pythonPath: string;

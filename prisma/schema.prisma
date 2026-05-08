@@ -21,6 +21,9 @@ model Car {
   imageUrl                 String?
   insuranceExpiryDate      DateTime?
   technicalVisitExpiryDate DateTime?
+  archived                 Boolean       @default(false)
+  archivedAt               String?
+  archivedReason           String?
   createdAt                DateTime      @default(now())
   updatedAt                DateTime      @updatedAt
   reservations             Reservation[]
@@ -41,6 +44,9 @@ model Client {
   nationality         String?
   address             String?
   isActive            Boolean       @default(true)
+  archived            Boolean       @default(false)
+  archivedAt          String?
+  archivedReason      String?
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
   reservations        Reservation[] @relation("PrimaryClientReservations")
@@ -68,6 +74,9 @@ model Reservation {
   pickupFuelLevel String?
   returnFuelLevel String?
   notes           String?
+  archived        Boolean   @default(false)
+  archivedAt      String?
+  archivedReason  String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   client          Client    @relation("PrimaryClientReservations", fields: [clientId], references: [id])
@@ -85,6 +94,9 @@ model Payment {
   method        String
   paymentDate   DateTime    @default(now())
   note          String?
+  archived      Boolean     @default(false)
+  archivedAt    String?
+  archivedReason String?
   createdAt     DateTime    @default(now())
   reservation   Reservation @relation(fields: [reservationId], references: [id])
 }
@@ -97,6 +109,20 @@ model Contract {
   status         String      @default("GENERATED")
   generatedAt    DateTime    @default(now())
   signedAt       DateTime?
+  archived       Boolean     @default(false)
+  archivedAt     String?
+  archivedReason String?
   createdAt      DateTime    @default(now())
   reservation    Reservation @relation(fields: [reservationId], references: [id])
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  fullName     String
+  username     String   @unique
+  passwordSalt String
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  lastLoginAt  DateTime?
 }

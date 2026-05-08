@@ -2,6 +2,7 @@ import { invokeCommand } from "@/services/invoke";
 import type {
   AIForecastResult,
   AIModelStatus,
+  AISeedSampleDataResult,
   AISettings,
   AITrainingResult,
 } from "@/types/aiForecast";
@@ -65,6 +66,10 @@ export async function getAIModelStatus(): Promise<AIModelStatus> {
     });
   }
   return mockStatus();
+}
+
+export async function seedAISampleData(): Promise<AISeedSampleDataResult> {
+  return invokeCommand<AISeedSampleDataResult>("seed_ai_sample_data");
 }
 
 function mockTrainingResult(): AITrainingResult {

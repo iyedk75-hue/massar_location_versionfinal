@@ -10,6 +10,9 @@ export interface Contract {
   status: ContractStatus;
   generatedAt: string;
   signedAt?: string | null;
+  archived?: boolean | null;
+  archivedAt?: string | null;
+  archivedReason?: string | null;
   createdAt: string;
   reservation?: Reservation;
 }

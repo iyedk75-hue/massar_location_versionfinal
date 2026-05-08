@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,6 +48,8 @@ export function ReservationForm({
   const today = getLocalDateKey(new Date());
   const initialStart = defaultValues?.startDate ? new Date(defaultValues.startDate) : null;
   const initialEnd = defaultValues?.endDate ? new Date(defaultValues.endDate) : null;
+  const initialCarIdRef = useRef(defaultValues?.carId ?? 0);
+  const didInitializeCarPricingRef = useRef(false);
   const {
     register,
     handleSubmit,
@@ -124,9 +126,14 @@ export function ReservationForm({
       return;
     }
 
+    if (!didInitializeCarPricingRef.current) {
+      didInitializeCarPricingRef.current = true;
+      if (defaultValues?.id && selectedCar.id === initialCarIdRef.current) return;
+    }
+
     setValue("dailyPrice", selectedCar.dailyPrice, { shouldValidate: true });
     setValue("depositAmount", getSuggestedDeposit(selectedCar.dailyPrice), { shouldValidate: true });
-  }, [selectedCar, setValue]);
+  }, [defaultValues?.id, selectedCar, setValue]);
 
   useEffect(() => {
     setValue("totalPrice", totalPrice, { shouldValidate: true });

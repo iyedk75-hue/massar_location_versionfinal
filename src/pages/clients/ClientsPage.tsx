@@ -11,6 +11,7 @@ import {
   SlidersHorizontal,
   Star,
   UserCheck,
+  UserX,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -39,6 +40,8 @@ export function ClientsPage() {
   const [open, setOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [detailsClient, setDetailsClient] = useState<Client | null>(null);
+  const [selectedClientIds, setSelectedClientIds] = useState<number[]>([]);
+  const [bulkActionsOpen, setBulkActionsOpen] = useState(false);
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -72,6 +75,10 @@ export function ClientsPage() {
   useEffect(() => {
     setPage(1);
   }, [query, statusFilter]);
+
+  useEffect(() => {
+    setSelectedClientIds((current) => current.filter((id) => clients.some((client) => client.id === id)));
+  }, [clients]);
 
   const locationsByClient = useMemo(() => {
     const counts = new Map<number, number>();
@@ -123,6 +130,66 @@ export function ClientsPage() {
   const paginatedClients = filteredClients.slice((safePage - 1) * CLIENTS_PER_PAGE, safePage * CLIENTS_PER_PAGE);
   const firstItem = filteredClients.length ? (safePage - 1) * CLIENTS_PER_PAGE + 1 : 0;
   const lastItem = Math.min(safePage * CLIENTS_PER_PAGE, filteredClients.length);
+  const selectedClientIdsSet = useMemo(() => new Set(selectedClientIds), [selectedClientIds]);
+  const selectedClients = useMemo(
+    () => clients.filter((client) => selectedClientIdsSet.has(client.id)),
+    [clients, selectedClientIdsSet],
+  );
+  const visibleClientIds = paginatedClients.map((client) => client.id);
+  const allVisibleClientsSelected = visibleClientIds.length > 0 && visibleClientIds.every((id) => selectedClientIdsSet.has(id));
+
+  function toggleClientSelection(id: number) {
+    setSelectedClientIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  }
+
+  function toggleVisibleClients() {
+    setSelectedClientIds((current) => {
+      if (allVisibleClientsSelected) return current.filter((id) => !visibleClientIds.includes(id));
+      return Array.from(new Set([...current, ...visibleClientIds]));
+    });
+  }
+
+  async function handleSelectedClientStatus(action: "activate" | "deactivate") {
+    const targets = selectedClients.filter((client) => (action === "activate" ? !isClientActive(client) : isClientActive(client)));
+
+    if (!selectedClients.length) {
+      showToast({ message: "Cochez au moins un client dans la liste.", title: "Aucune sélection", type: "info" });
+      setBulkActionsOpen(false);
+      return;
+    }
+
+    if (!targets.length) {
+      showToast({
+        message: action === "activate" ? "Les clients sélectionnés sont déjà actifs." : "Les clients sélectionnés sont déjà désactivés.",
+        title: "Aucun changement",
+        type: "info",
+      });
+      setBulkActionsOpen(false);
+      return;
+    }
+
+    if (action === "deactivate" && !window.confirm(`Désactiver ${targets.length} client${targets.length > 1 ? "s" : ""} sélectionné${targets.length > 1 ? "s" : ""} ?`)) {
+      setBulkActionsOpen(false);
+      return;
+    }
+
+    try {
+      const updatedClients = await Promise.all(
+        targets.map((client) => (action === "activate" ? reactivateClient(client.id) : deactivateClient(client.id))),
+      );
+      const updatedById = new Map(updatedClients.map((client) => [client.id, client]));
+
+      setClients((current) => current.map((client) => updatedById.get(client.id) ?? client));
+      setSelectedClientIds([]);
+      setBulkActionsOpen(false);
+      showToast({
+        title: action === "activate" ? "Clients activés" : "Clients désactivés",
+        type: "success",
+      });
+    } catch (caught) {
+      showToast({ message: getErrorMessage(caught), title: "Action impossible", type: "error" });
+    }
+  }
 
   async function handleSubmit(data: CreateClientDto) {
     try {
@@ -247,10 +314,42 @@ export function ClientsPage() {
             <option value="ACTIVE">Clients actifs</option>
             <option value="INACTIVE">Clients inactifs</option>
           </select>
-          <Button className="h-11 rounded-lg border-slate-200 bg-white px-5 shadow-sm" variant="outline">
-            <SlidersHorizontal className="h-4 w-4" />
-            Filtres
-          </Button>
+          <div className="relative">
+            <Button
+              className="h-11 w-full rounded-lg border-slate-200 bg-white px-5 shadow-sm"
+              onClick={() => setBulkActionsOpen((current) => !current)}
+              type="button"
+              variant="outline"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              Filtres
+            </Button>
+            {bulkActionsOpen && (
+              <div className="absolute right-0 z-20 mt-2 w-56 overflow-hidden rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
+                <p className="px-2 pb-2 text-xs font-medium text-slate-500">
+                  {selectedClientIds.length} client{selectedClientIds.length > 1 ? "s" : ""} sélectionné{selectedClientIds.length > 1 ? "s" : ""}
+                </p>
+                <button
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={!selectedClientIds.length}
+                  onClick={() => void handleSelectedClientStatus("activate")}
+                  type="button"
+                >
+                  <UserCheck className="h-4 w-4" />
+                  Activer sélection
+                </button>
+                <button
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={!selectedClientIds.length}
+                  onClick={() => void handleSelectedClientStatus("deactivate")}
+                  type="button"
+                >
+                  <UserX className="h-4 w-4" />
+                  Désactiver sélection
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -258,6 +357,16 @@ export function ClientsPage() {
             <table className="w-full min-w-[920px] text-left text-sm">
               <thead className="bg-slate-100/80 text-xs uppercase text-slate-500">
                 <tr>
+                  <th className="w-14 px-5 py-4">
+                    <input
+                      aria-label="Sélectionner les clients visibles"
+                      checked={allVisibleClientsSelected}
+                      className="h-4 w-4 rounded border-slate-300 accent-blue-600"
+                      disabled={!visibleClientIds.length}
+                      onChange={toggleVisibleClients}
+                      type="checkbox"
+                    />
+                  </th>
                   <th className="px-5 py-4 font-semibold">Client</th>
                   <th className="px-5 py-4 font-semibold">Téléphone</th>
                   <th className="px-5 py-4 font-semibold">Permis</th>
@@ -274,7 +383,21 @@ export function ClientsPage() {
                     const lastReservation = lastReservationByClient.get(client.id);
 
                     return (
-                      <tr className="transition-colors hover:bg-slate-50/80" key={client.id}>
+                      <tr
+                        className={`transition-colors ${
+                          selectedClientIdsSet.has(client.id) ? "bg-blue-50/70 hover:bg-blue-50" : "hover:bg-slate-50/80"
+                        }`}
+                        key={client.id}
+                      >
+                        <td className="px-5 py-4">
+                          <input
+                            aria-label={`Sélectionner ${normalizeClientName(client.fullName)}`}
+                            checked={selectedClientIdsSet.has(client.id)}
+                            className="h-4 w-4 rounded border-slate-300 accent-blue-600"
+                            onChange={() => toggleClientSelection(client.id)}
+                            type="checkbox"
+                          />
+                        </td>
                         <td className="px-5 py-4">
                           <ClientIdentity client={client} locationsCount={locationsCount} />
                         </td>
@@ -304,7 +427,7 @@ export function ClientsPage() {
                   })
                 ) : (
                   <tr>
-                    <td className="px-5 py-10 text-center text-muted-foreground" colSpan={7}>
+                    <td className="px-5 py-10 text-center text-muted-foreground" colSpan={8}>
                       Aucun client trouvé
                     </td>
                   </tr>
@@ -317,6 +440,7 @@ export function ClientsPage() {
         <div className="flex flex-col gap-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
           <p>
             Affichage de {firstItem} à {lastItem} sur {filteredClients.length} clients
+            {selectedClientIds.length > 0 ? ` · ${selectedClientIds.length} sélectionné${selectedClientIds.length > 1 ? "s" : ""}` : ""}
           </p>
           <Pagination currentPage={safePage} onPageChange={setPage} totalPages={totalPages} />
         </div>

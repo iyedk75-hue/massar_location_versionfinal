@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   CalendarDays,
+  Archive,
   Car as CarIcon,
   CheckCircle2,
   Clock,
@@ -23,6 +24,7 @@ import { ContractPDF } from "@/pages/contracts/ContractPDF";
 import { getCars } from "@/services/car.service";
 import { getClients } from "@/services/client.service";
 import { getContracts } from "@/services/contract.service";
+import { archiveItem } from "@/services/archiveService";
 import { getReservations } from "@/services/reservation.service";
 import type { Car } from "@/types/car";
 import type { Client } from "@/types/client";
@@ -163,10 +165,16 @@ export function ContractPreview() {
   const [pageSize, setPageSize] = useState(10);
 
   useEffect(() => {
-    void Promise.all([getContracts(), getReservations(), getClients(), getCars()]).then(
-      ([c, r, cl, ca]) => { setContracts(c); setReservations(r); setClients(cl); setCars(ca); },
-    );
+    void reload();
   }, []);
+
+  async function reload() {
+    const [c, r, cl, ca] = await Promise.all([getContracts(), getReservations(), getClients(), getCars()]);
+    setContracts(c);
+    setReservations(r);
+    setClients(cl);
+    setCars(ca);
+  }
 
   const reservationMap = useMemo(() => new Map(reservations.map((r) => [r.id, r])), [reservations]);
   const clientMap = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
@@ -225,7 +233,7 @@ export function ContractPreview() {
       const bytes = await createContractPdf(row.contract, {
         car: row.car, client: row.client, reservation: row.reservation, secondClient: row.secondClient,
       });
-      const blob = new Blob([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)], { type: "application/pdf" });
+      const blob = new Blob([new Uint8Array(bytes)], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url; a.download = `${row.contract.contractNumber}.pdf`; a.click();
@@ -233,6 +241,17 @@ export function ContractPreview() {
       showToast({ title: "Contrat téléchargé", type: "success" });
     } catch (error) {
       showToast({ message: getErrorMessage(error), title: "Erreur contrat", type: "error" });
+    }
+  }
+
+  async function handleArchiveContract(contract: Contract) {
+    if (!window.confirm("Archiver ce contrat ? Il disparaîtra de la liste principale et restera restaurable depuis Archive.")) return;
+    try {
+      await archiveItem("contract", contract.id, "Archivage manuel depuis Contrats");
+      await reload();
+      showToast({ title: "Contrat archivé", type: "success" });
+    } catch (error) {
+      showToast({ message: getErrorMessage(error), title: "Archivage impossible", type: "error" });
     }
   }
 
@@ -386,6 +405,7 @@ export function ContractPreview() {
                   <ContractTableRow
                     key={row.contract.id}
                     onDownload={() => void downloadContract(row)}
+                    onArchive={() => void handleArchiveContract(row.contract)}
                     onPrint={() => window.print()}
                     onView={() => setSelected(row.contract)}
                     row={row}
@@ -528,11 +548,13 @@ function StatCard({
 // ─── Table row ────────────────────────────────────────────────────────────────
 
 function ContractTableRow({
+  onArchive,
   onDownload,
   onPrint,
   onView,
   row,
 }: {
+  onArchive: () => void;
   onDownload: () => void;
   onPrint: () => void;
   onView: () => void;
@@ -640,6 +662,9 @@ function ContractTableRow({
           </ActionBtn>
           <ActionBtn label="Modifier" onClick={() => {}}>
             <Pencil className="h-4 w-4" />
+          </ActionBtn>
+          <ActionBtn label="Archiver" onClick={onArchive}>
+            <Archive className="h-4 w-4" />
           </ActionBtn>
         </div>
       </td>

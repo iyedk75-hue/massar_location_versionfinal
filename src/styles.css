@@ -565,3 +565,75 @@
     }
   }
 }
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 14mm;
+  }
+
+  html,
+  body,
+  #root {
+    height: auto !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .contract-print-dialog,
+  .contract-print-dialog *,
+  .contract-print-sheet,
+  .contract-print-sheet * {
+    visibility: visible !important;
+  }
+
+  .contract-print-dialog {
+    position: fixed !important;
+    inset: 0 !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    transform: none !important;
+    background: #ffffff !important;
+    color: #020617 !important;
+  }
+
+  .contract-print-dialog > div:first-child,
+  .contract-print-dialog > button {
+    display: none !important;
+  }
+
+  .contract-print-sheet {
+    position: static !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    color: #020617 !important;
+  }
+
+  .contract-print-sheet header,
+  .contract-print-sheet footer div,
+  .contract-print-sheet .border-border {
+    border-color: #cbd5e1 !important;
+  }
+
+  .contract-print-sheet section.grid,
+  .contract-print-sheet footer.grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}

@@ -162,6 +162,7 @@ export function ContractPreview() {
   const [clients, setClients] = useState<Client[]>([]);
   const [cars, setCars] = useState<Car[]>([]);
   const [selected, setSelected] = useState<Contract | null>(null);
+  const [printRequested, setPrintRequested] = useState(false);
   const [archiveContract, setArchiveContract] = useState<Contract | null>(null);
   const [archiveLoading, setArchiveLoading] = useState(false);
   const { showToast } = useToast();
@@ -180,6 +181,17 @@ export function ContractPreview() {
   useEffect(() => {
     void reload();
   }, []);
+
+  useEffect(() => {
+    if (!selected || !printRequested) return;
+
+    const printTimer = window.setTimeout(() => {
+      window.print();
+      setPrintRequested(false);
+    }, 100);
+
+    return () => window.clearTimeout(printTimer);
+  }, [printRequested, selected]);
 
   async function reload() {
     const [c, r, cl, ca] = await Promise.all([getContracts(), getReservations(), getClients(), getCars()]);
@@ -256,6 +268,11 @@ export function ContractPreview() {
 
   function resetFilters() {
     setSearch(""); setStatusFilter("ALL"); setDateFrom(""); setDateTo(""); setCarFilter(0); setPage(1);
+  }
+
+  function printContract(contract: Contract) {
+    setSelected(contract);
+    setPrintRequested(true);
   }
 
   async function downloadContract(row: ContractRow) {
@@ -432,7 +449,7 @@ export function ContractPreview() {
                     key={row.contract.id}
                     onDownload={() => void downloadContract(row)}
                     onArchive={() => setArchiveContract(row.contract)}
-                    onPrint={() => window.print()}
+                    onPrint={() => printContract(row.contract)}
                     onView={() => setSelected(row.contract)}
                     row={row}
                   />
@@ -454,7 +471,7 @@ export function ContractPreview() {
 
       {/* Preview dialog */}
       <Dialog onOpenChange={(v) => !v && setSelected(null)} open={Boolean(selected)}>
-        <DialogContent className="max-h-[90vh] overflow-auto">
+        <DialogContent className="contract-print-dialog max-h-[90vh] overflow-auto">
           <DialogHeader>
             <DialogTitle>Prévisualisation contrat</DialogTitle>
           </DialogHeader>

@@ -21,7 +21,7 @@ export function ContractPDF({
   secondClient?: Client;
 }) {
   return (
-    <div className="space-y-6 bg-white p-8 text-sm">
+    <div className="contract-print-sheet space-y-6 bg-white p-8 text-sm">
       <header className="border-b border-border pb-4">
         <h2 className="text-2xl font-semibold">Contrat de location</h2>
         <p className="text-muted-foreground">{contract.contractNumber}</p>

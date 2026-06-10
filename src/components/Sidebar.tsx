@@ -52,7 +52,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
             <p className="truncate text-sm leading-5 text-muted-foreground">{displayName}</p>
           </div>
         )}
-      </div>j
+      </div>
       <nav className="space-y-1.5 p-3">
         {navigationItems.map((item) => (
           <NavLink

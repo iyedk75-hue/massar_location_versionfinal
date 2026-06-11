@@ -10,6 +10,7 @@ import { formatDateTime, formatRentalDuration } from "@/utils/date";
 import { formatMoney } from "@/utils/money";
 import { cn } from "@/lib/utils";
 import { getClientIdentity, type ReservationViewModel } from "@/pages/reservations/components/reservationViewUtils";
+import { useConfirmAction } from "@/hooks/useConfirmAction";
 
 interface ReservationQuickDetailsProps {
   hasActiveRentalForCar?: boolean;
@@ -35,6 +36,26 @@ export function ReservationQuickDetails({
   const reservation = item?.reservation;
   const canViewContract = reservation?.status === "ONGOING" || reservation?.status === "COMPLETED";
   const canEdit = reservation?.status !== "COMPLETED" && reservation?.status !== "CANCELLED";
+  const { confirmAction } = useConfirmAction();
+
+  function confirmStatusChange(status: Reservation["status"]) {
+    if (!reservation) return;
+    confirmAction({
+      ...getReservationStatusConfirmation(status),
+      onConfirm: () => onStatusChange(reservation.id, status),
+    });
+  }
+
+  function confirmDelete() {
+    if (!reservation) return;
+    confirmAction({
+      action: "supprimer",
+      confirmLabel: "Supprimer",
+      description: "Les paiements et le contrat liés seront aussi supprimés.",
+      title: "Supprimer cette réservation ?",
+      onConfirm: () => onDelete(reservation),
+    });
+  }
 
   return (
     <DialogPrimitive.Root onOpenChange={(value) => !value && onClose()} open={open}>
@@ -150,25 +171,25 @@ export function ReservationQuickDetails({
                     </Button>
                   )}
                   {(reservation.status === "EN_ATTENTE" || reservation.status === "RESERVED") && !hasActiveRentalForCar && (
-                    <Button onClick={() => void onStatusChange(reservation.id, "ONGOING")} type="button">
+                    <Button onClick={() => confirmStatusChange("ONGOING")} type="button">
                       <Play className="h-4 w-4" />
                       Démarrer
                     </Button>
                   )}
                   {reservation.status === "ONGOING" && (
-                    <Button onClick={() => void onStatusChange(reservation.id, "COMPLETED")} type="button">
+                    <Button onClick={() => confirmStatusChange("COMPLETED")} type="button">
                       <CheckCircle2 className="h-4 w-4" />
                       Terminer
                     </Button>
                   )}
                   {(reservation.status === "EN_ATTENTE" || reservation.status === "RESERVED") && (
-                    <Button onClick={() => void onStatusChange(reservation.id, "CANCELLED")} type="button" variant="destructive">
+                    <Button onClick={() => confirmStatusChange("CANCELLED")} type="button" variant="destructive">
                       <Ban className="h-4 w-4" />
                       Annuler
                     </Button>
                   )}
                   {reservation.status === "CANCELLED" && (
-                    <Button onClick={() => void onDelete(reservation)} type="button" variant="destructive">
+                    <Button onClick={confirmDelete} type="button" variant="destructive">
                       <Trash2 className="h-4 w-4" />
                       Supprimer
                     </Button>
@@ -206,4 +227,40 @@ function DetailValue({ label, value }: { label: string; value: string }) {
       <p className={cn("mt-1 break-words font-semibold text-slate-950 dark:text-slate-100")}>{value}</p>
     </div>
   );
+}
+
+function getReservationStatusConfirmation(status: Reservation["status"]) {
+  if (status === "ONGOING") {
+    return {
+      action: "démarrer" as const,
+      confirmLabel: "Démarrer",
+      description: "Cette action démarrera la location sélectionnée.",
+      title: "Démarrer cette location ?",
+    };
+  }
+
+  if (status === "COMPLETED") {
+    return {
+      action: "terminer" as const,
+      confirmLabel: "Terminer",
+      description: "Cette action marquera la location comme terminée.",
+      title: "Terminer cette location ?",
+    };
+  }
+
+  if (status === "CANCELLED") {
+    return {
+      action: "annuler" as const,
+      confirmLabel: "Annuler",
+      description: "Cette action annulera la réservation sélectionnée.",
+      title: "Annuler cette réservation ?",
+    };
+  }
+
+  return {
+    action: "valider" as const,
+    confirmLabel: "Valider",
+    description: "Cette action mettra à jour le statut de la réservation.",
+    title: "Valider le changement de statut ?",
+  };
 }

@@ -136,16 +136,16 @@ export function ClientDetails() {
           <h2 className="text-base font-semibold text-slate-950">Reservations du client</h2>
           <p className="mt-1 text-sm text-muted-foreground">Historique complet comme client principal ou deuxieme conducteur.</p>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px] text-left text-sm">
+        <div className="w-full overflow-x-auto md:overflow-x-visible">
+          <table className="w-full min-w-[760px] table-fixed text-left text-sm md:min-w-0">
             <thead className="bg-slate-50 text-xs uppercase text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-semibold">Reservation</th>
-                <th className="px-5 py-3 font-semibold">Voiture</th>
-                <th className="px-5 py-3 font-semibold">Periode</th>
-                <th className="px-5 py-3 font-semibold">Role</th>
-                <th className="px-5 py-3 font-semibold">Montant</th>
-                <th className="px-5 py-3 font-semibold">Statut</th>
+                <th className="w-[92px] px-2 py-3 font-semibold lg:w-[110px]">Reservation</th>
+                <th className="min-w-0 px-2 py-3 font-semibold">Voiture</th>
+                <th className="w-[150px] px-2 py-3 font-semibold lg:w-[178px]">Periode</th>
+                <th className="w-[132px] px-2 py-3 font-semibold lg:w-[154px]">Role</th>
+                <th className="w-[104px] px-2 py-3 font-semibold lg:w-[122px]">Montant</th>
+                <th className="w-[112px] px-2 py-3 font-semibold lg:w-[132px]">Statut</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -154,15 +154,23 @@ export function ClientDetails() {
                   const car = carsById.get(reservation.carId) ?? reservation.car;
                   return (
                     <tr className="hover:bg-slate-50/80" key={reservation.id}>
-                      <td className="px-5 py-4 font-semibold text-slate-900">#{reservation.id}</td>
-                      <td className="px-5 py-4">
-                        <p className="font-medium text-slate-900">{car ? formatCarName(car.brand, car.model) : `Voiture #${reservation.carId}`}</p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">{car ? formatRegistrationNumber(car.registrationNumber) : "-"}</p>
+                      <td className="overflow-hidden whitespace-nowrap px-2 py-4 font-semibold text-slate-900">
+                        <span className="block truncate">#{reservation.id}</span>
                       </td>
-                      <td className="px-5 py-4 text-slate-700">{formatShortPeriod(reservation.startDate, reservation.endDate)}</td>
-                      <td className="px-5 py-4 text-slate-700">{reservation.clientId === client.id ? "Client principal" : "Deuxieme conducteur"}</td>
-                      <td className="px-5 py-4 font-semibold text-slate-900">{formatMoney(reservation.totalPrice)}</td>
-                      <td className="px-5 py-4">
+                      <td className="min-w-0 overflow-hidden px-2 py-4">
+                        <p className="truncate font-medium text-slate-900">{car ? formatCarName(car.brand, car.model) : `Voiture #${reservation.carId}`}</p>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">{car ? formatRegistrationNumber(car.registrationNumber) : "-"}</p>
+                      </td>
+                      <td className="overflow-hidden whitespace-nowrap px-2 py-4 text-slate-700">
+                        <span className="block truncate">{formatShortPeriod(reservation.startDate, reservation.endDate)}</span>
+                      </td>
+                      <td className="overflow-hidden whitespace-nowrap px-2 py-4 text-slate-700">
+                        <span className="block truncate">{reservation.clientId === client.id ? "Client principal" : "Deuxieme conducteur"}</span>
+                      </td>
+                      <td className="overflow-hidden whitespace-nowrap px-2 py-4 font-semibold text-slate-900">
+                        <span className="block truncate">{formatMoney(reservation.totalPrice)}</span>
+                      </td>
+                      <td className="overflow-hidden px-2 py-4">
                         <StatusBadge status={reservation.status} />
                       </td>
                     </tr>

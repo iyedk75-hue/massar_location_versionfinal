@@ -9,8 +9,6 @@ import { ArchiveEmptyDog } from "@/pages/archive/components/ArchiveEmptyDog";
 import { ArchiveSearch } from "@/pages/archive/components/ArchiveSearch";
 import { ArchiveStats } from "@/pages/archive/components/ArchiveStats";
 import { ArchiveTabs, type ArchiveTab } from "@/pages/archive/components/ArchiveTabs";
-import { PermanentDeleteDialog } from "@/pages/archive/components/PermanentDeleteDialog";
-import { RestoreArchiveDialog } from "@/pages/archive/components/RestoreArchiveDialog";
 import {
   getArchivedItems,
   getArchiveStats,
@@ -19,6 +17,7 @@ import {
   searchArchivedItems,
 } from "@/services/archiveService";
 import type { ArchiveItem, ArchiveStats as ArchiveStatsType } from "@/types/archive";
+import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useToast } from "@/hooks/useToast";
 
 const emptyStats: ArchiveStatsType = {
@@ -36,12 +35,11 @@ export function ArchivePage() {
   const [query, setQuery] = useState("");
   const [activeTab, setActiveTab] = useState<ArchiveTab>("all");
   const [detailsItem, setDetailsItem] = useState<ArchiveItem | null>(null);
-  const [restoreItem, setRestoreItem] = useState<ArchiveItem | null>(null);
-  const [deleteItem, setDeleteItem] = useState<ArchiveItem | null>(null);
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const [cleanupAge, setCleanupAge] = useState<"6m" | "1y">("6m");
   const [cleanupWithoutDependencies, setCleanupWithoutDependencies] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const { confirmAction } = useConfirmAction();
   const { showToast } = useToast();
   const navigate = useNavigate();
 
@@ -81,18 +79,14 @@ export function ArchivePage() {
     }
   }
 
-  async function handleRestore() {
-    if (!restoreItem) return;
-    await restoreArchivedItem(restoreItem.type, restoreItem.id);
-    setRestoreItem(null);
+  async function handleRestore(item: ArchiveItem) {
+    await restoreArchivedItem(item.type, item.id);
     await reload();
     showToast({ title: "Élément restauré avec succès", type: "success" });
   }
 
-  async function handlePermanentDelete() {
-    if (!deleteItem) return;
-    await permanentlyDeleteArchivedItem(deleteItem.type, deleteItem.id);
-    setDeleteItem(null);
+  async function handlePermanentDelete(item: ArchiveItem) {
+    await permanentlyDeleteArchivedItem(item.type, item.id);
     await reload();
     showToast({ title: "Élément supprimé définitivement", type: "success" });
   }
@@ -165,9 +159,25 @@ export function ArchivePage() {
       {filteredItems.length ? (
         <ArchiveDataGrid
           items={filteredItems}
-          onDelete={setDeleteItem}
+          onDelete={(item) =>
+            confirmAction({
+              action: "supprimer",
+              confirmLabel: "Supprimer définitivement",
+              description: `Cette action est irréversible pour "${item.title}".`,
+              title: "Supprimer définitivement ?",
+              onConfirm: () => handlePermanentDelete(item),
+            })
+          }
           onExport={handleExport}
-          onRestore={setRestoreItem}
+          onRestore={(item) =>
+            confirmAction({
+              action: "restaurer",
+              confirmLabel: "Restaurer",
+              description: `"${item.title}" sera restauré dans son espace d'origine.`,
+              title: "Restaurer cet élément ?",
+              onConfirm: () => handleRestore(item),
+            })
+          }
           onView={setDetailsItem}
         />
       ) : (
@@ -175,13 +185,6 @@ export function ArchivePage() {
       )}
 
       <ArchiveDetailsDrawer item={detailsItem} onClose={() => setDetailsItem(null)} open={Boolean(detailsItem)} />
-      <RestoreArchiveDialog item={restoreItem} onCancel={() => setRestoreItem(null)} onConfirm={handleRestore} open={Boolean(restoreItem)} />
-      <PermanentDeleteDialog
-        item={deleteItem}
-        onCancel={() => setDeleteItem(null)}
-        onConfirm={handlePermanentDelete}
-        open={Boolean(deleteItem)}
-      />
 
       <Dialog onOpenChange={setCleanupOpen} open={cleanupOpen}>
         <DialogContent className="w-[min(92vw,520px)] dark:border-slate-800 dark:bg-slate-900">
@@ -223,7 +226,19 @@ export function ArchivePage() {
             <Button onClick={() => setCleanupOpen(false)} type="button" variant="outline">
               Annuler
             </Button>
-            <Button onClick={() => void handleCleanupArchives()} type="button" variant="destructive">
+            <Button
+              onClick={() =>
+                confirmAction({
+                  action: "nettoyer",
+                  confirmLabel: "Confirmer nettoyage",
+                  description: "Les archives correspondant aux critères sélectionnés seront supprimées définitivement.",
+                  title: "Nettoyer les archives ?",
+                  onConfirm: handleCleanupArchives,
+                })
+              }
+              type="button"
+              variant="destructive"
+            >
               Confirmer nettoyage
             </Button>
           </div>

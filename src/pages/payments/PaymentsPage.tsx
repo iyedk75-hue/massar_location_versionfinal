@@ -10,9 +10,8 @@ import {
   RotateCcw,
   ShieldCheck,
 } from "lucide-react";
-import { Link } from "react-router-dom";
 import { PageHeader } from "@/app/layout";
-import { ActionIconButton } from "@/components/ui/action-buttons/ActionIconButton";
+import { DataGridActionMenu } from "@/components/ui/action-menu/DataGridActionMenu";
 import { AppPagination } from "@/components/ui/pagination/AppPagination";
 import { ArchiveConfirmDialog } from "@/components/archive/ArchiveConfirmDialog";
 import { Button } from "@/components/ui/button";
@@ -36,6 +35,7 @@ import { formatClientIdentity, normalizeClientName } from "@/utils/client";
 import { formatShortPeriod, getLocalDateKey } from "@/utils/date";
 import { formatMoney } from "@/utils/money";
 import { useToast } from "@/hooks/useToast";
+import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { readStoredPageSize, writeStoredPageSize } from "@/lib/pagination";
 
 type PaymentStatus = "Non payé" | "Partiel" | "Payé" | "Annulée";
@@ -82,6 +82,7 @@ export function PaymentsPage() {
   const [archivePayment, setArchivePayment] = useState<Payment | null>(null);
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [depositAnalyticsOpen, setDepositAnalyticsOpen] = useState(false);
+  const { confirmAction } = useConfirmAction();
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -239,7 +240,7 @@ export function PaymentsPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       <PageHeader title="Paiements">
         <Dialog onOpenChange={setOpen} open={open}>
           <DialogTrigger asChild>
@@ -321,7 +322,19 @@ export function PaymentsPage() {
       </section>
 
       <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm">
-        <PaymentsDataGrid onArchivePayment={setArchivePayment} onPaymentAction={setActionSummary} rows={paginatedSummaries} />
+        <PaymentsDataGrid
+          onArchivePayment={(payment) =>
+            confirmAction({
+              action: "archiver",
+              confirmLabel: "Archiver",
+              description: `Le paiement #${payment.id} sera déplacé dans les archives.`,
+              title: "Archiver ce paiement ?",
+              onConfirm: () => setArchivePayment(payment),
+            })
+          }
+          onPaymentAction={setActionSummary}
+          rows={paginatedSummaries}
+        />
         <AppPagination
           currentPage={safeCurrentPage}
           onPageChange={setCurrentPage}
@@ -501,26 +514,25 @@ function PaymentsDataGrid({
   rows: ReservationSummary[];
 }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[1080px] border-separate border-spacing-0 text-left text-sm" role="grid">
+    <div className="w-full overflow-x-auto md:overflow-x-visible">
+      <table className="w-full min-w-[900px] table-fixed border-separate border-spacing-0 text-left text-sm md:min-w-0" role="grid">
         <thead className="bg-slate-50 text-xs uppercase text-muted-foreground">
           <tr>
-            <TableHead>Client</TableHead>
-            <TableHead>Véhicule</TableHead>
-            <TableHead>Période</TableHead>
-            <TableHead>Total dû</TableHead>
-            <TableHead>Total payé</TableHead>
-            <TableHead>Reste</TableHead>
-            <TableHead>Caution</TableHead>
-            <TableHead>Statut</TableHead>
-            <TableHead className="text-right">Action</TableHead>
-            <TableHead className="text-right">Détail</TableHead>
+            <TableHead className="min-w-0">Client</TableHead>
+            <TableHead className="min-w-0">Véhicule</TableHead>
+            <TableHead className="w-[126px] lg:w-[146px]">Période</TableHead>
+            <TableHead className="w-[84px] lg:w-[96px]">Dû</TableHead>
+            <TableHead className="w-[84px] lg:w-[96px]">Payé</TableHead>
+            <TableHead className="w-[84px] lg:w-[96px]">Reste</TableHead>
+            <TableHead className="w-[108px] lg:w-[126px]">Caution</TableHead>
+            <TableHead className="w-[92px] lg:w-[108px]">Statut</TableHead>
+            <TableHead className="w-[82px] text-right lg:w-[96px]">Actions</TableHead>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td className="px-4 py-10 text-center text-muted-foreground" colSpan={10}>
+              <td className="px-4 py-10 text-center text-muted-foreground" colSpan={9}>
                 Aucun résumé de paiement trouvé
               </td>
             </tr>
@@ -530,49 +542,52 @@ function PaymentsDataGrid({
 
               return (
                 <tr className="border-t border-border transition-colors hover:bg-muted/40" key={row.reservation.id}>
-                  <TableCell>
-                    <p className="font-semibold">{row.client ? normalizeClientName(row.client.fullName) : "Client inconnu"}</p>
-                    <p className="text-xs text-muted-foreground">{getClientIdentifier(row.client)}</p>
+                  <TableCell className="min-w-0 overflow-hidden">
+                    <p className="truncate font-semibold">{row.client ? normalizeClientName(row.client.fullName) : "Client inconnu"}</p>
+                    <p className="truncate text-xs text-muted-foreground">{getClientIdentifier(row.client)}</p>
                   </TableCell>
-                  <TableCell>
-                    <p className="font-semibold">{row.car ? formatCarName(row.car.brand, row.car.model) : "Voiture inconnue"}</p>
-                    <p className="text-xs text-muted-foreground">{row.car ? `(${formatRegistrationNumber(row.car.registrationNumber)})` : "-"}</p>
+                  <TableCell className="min-w-0 overflow-hidden">
+                    <p className="truncate font-semibold">{row.car ? formatCarName(row.car.brand, row.car.model) : "Voiture inconnue"}</p>
+                    <p className="truncate text-xs text-muted-foreground">{row.car ? `(${formatRegistrationNumber(row.car.registrationNumber)})` : "-"}</p>
                   </TableCell>
-                  <TableCell>{formatShortPeriod(row.reservation.startDate, row.reservation.endDate)}</TableCell>
-                  <TableCell className="font-semibold">{formatMoney(row.reservation.totalPrice)}</TableCell>
-                  <TableCell className="font-semibold text-emerald-700">{formatMoney(row.paid)}</TableCell>
-                  <TableCell className={cn("font-semibold", row.remaining > 0 ? "text-red-600" : "text-foreground")}>
-                    {formatMoney(row.remaining)}
+                  <TableCell className="overflow-hidden whitespace-nowrap">
+                    <span className="block truncate">{formatShortPeriod(row.reservation.startDate, row.reservation.endDate)}</span>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="overflow-hidden whitespace-nowrap font-semibold">
+                    <span className="block truncate">{formatMoney(row.reservation.totalPrice)}</span>
+                  </TableCell>
+                  <TableCell className="overflow-hidden whitespace-nowrap font-semibold text-emerald-700">
+                    <span className="block truncate">{formatMoney(row.paid)}</span>
+                  </TableCell>
+                  <TableCell className={cn("overflow-hidden whitespace-nowrap font-semibold", row.remaining > 0 ? "text-red-600" : "text-foreground")}>
+                    <span className="block truncate">{formatMoney(row.remaining)}</span>
+                  </TableCell>
+                  <TableCell className="overflow-hidden">
                     <DepositBadge summary={row} />
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="overflow-hidden">
                     <PaymentStatus label={row.status} />
                   </TableCell>
                   <TableCell className="text-right">
-                    <ActionIconButton
-                      color="emerald"
-                      disabled={actionLocked}
-                      icon={Banknote}
-                      label={actionLocked ? "Paiement et remboursement terminés" : "Ajouter une action paiement"}
-                      onClick={() => onPaymentAction(row)}
-                    />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {row.latestPayment ? (
-                      <div className="flex justify-end gap-2">
-                        <ActionIconButton asChild color="blue" icon={Eye} label="Voir détail">
-                          <Link to={`/payments/${row.latestPayment.id}`}>
-                            <Eye className="h-4 w-4" />
-                          </Link>
-                        </ActionIconButton>
-                        <ActionIconButton color="emerald" icon={ReceiptText} label="Reçu" />
-                        <ActionIconButton color="violet" icon={Archive} label="Archiver" onClick={() => onArchivePayment(row.latestPayment!)} />
-                      </div>
-                    ) : (
-                      <ActionIconButton color="slate" disabled icon={Eye} label="Aucun paiement renseigné" />
-                    )}
+                    <div className="flex justify-end">
+                      <DataGridActionMenu
+                        actions={[
+                          {
+                            disabled: actionLocked,
+                            icon: Banknote,
+                            label: actionLocked ? "Paiement terminé" : "Ajouter une action paiement",
+                            onClick: () => onPaymentAction(row),
+                          },
+                          ...(row.latestPayment
+                            ? [
+                                { href: `/payments/${row.latestPayment.id}`, icon: Eye, label: "Voir détail" },
+                                { icon: ReceiptText, label: "Reçu" },
+                                { icon: Archive, label: "Archiver", onClick: () => onArchivePayment(row.latestPayment!) },
+                              ]
+                            : [{ disabled: true, icon: Eye, label: "Aucun paiement renseigné" }]),
+                        ]}
+                      />
+                    </div>
                   </TableCell>
                 </tr>
               );
@@ -595,9 +610,9 @@ function PaymentStatus({ label }: { label: PaymentStatus }) {
           : "bg-red-50 text-red-700 ring-red-200";
 
   return (
-    <span className={cn("inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold ring-1", className)}>
-      {label}
-      {label === "Payé" && <Check className="h-3 w-3" />}
+    <span className={cn("inline-flex max-w-full items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold ring-1", className)}>
+      <span className="truncate">{label}</span>
+      {label === "Payé" && <Check className="h-3 w-3 shrink-0" />}
     </span>
   );
 }
@@ -613,11 +628,11 @@ function DepositBadge({ summary }: { summary: ReservationSummary }) {
           : "bg-slate-50 text-slate-700 ring-slate-200";
 
   return (
-    <div className="flex flex-col items-start gap-1">
-      <span className={cn("inline-flex rounded-md px-2 py-1 text-xs font-semibold ring-1", className)}>
-        {formatMoney(summary.depositAmount)}
+    <div className="flex min-w-0 flex-col items-start gap-1">
+      <span className={cn("inline-flex max-w-full rounded-md px-2 py-1 text-xs font-semibold ring-1", className)}>
+        <span className="truncate">{formatMoney(summary.depositAmount)}</span>
       </span>
-      <span className="text-xs font-medium text-muted-foreground">{summary.depositStatus}</span>
+      <span className="max-w-full truncate text-xs font-medium text-muted-foreground">{summary.depositStatus}</span>
     </div>
   );
 }
@@ -642,11 +657,11 @@ function SummaryRow({
 }
 
 function TableHead({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <th className={cn("px-4 py-3 font-semibold", className)}>{children}</th>;
+  return <th className={cn("px-2 py-3 font-semibold", className)}>{children}</th>;
 }
 
 function TableCell({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <td className={cn("px-4 py-3 align-middle", className)}>{children}</td>;
+  return <td className={cn("px-2 py-3 align-middle", className)}>{children}</td>;
 }
 
 function sumPayments(payments: Payment[], type: Payment["type"]) {

@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/app/layout";
 import { ArchiveConfirmDialog } from "@/components/archive/ArchiveConfirmDialog";
-import { ActionIconButton } from "@/components/ui/action-buttons/ActionIconButton";
+import { DataGridActionMenu } from "@/components/ui/action-menu/DataGridActionMenu";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { AppPagination } from "@/components/ui/pagination/AppPagination";
@@ -38,6 +38,7 @@ import { formatClientIdentity, normalizeClientName } from "@/utils/client";
 import { getRentalDays } from "@/utils/date";
 import { createContractPdf } from "@/utils/pdf";
 import { useToast } from "@/hooks/useToast";
+import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { cn } from "@/lib/utils";
 import { readStoredPageSize, writeStoredPageSize } from "@/lib/pagination";
 
@@ -168,6 +169,7 @@ export function ContractPreview() {
   const [printRequested, setPrintRequested] = useState(false);
   const [archiveContract, setArchiveContract] = useState<Contract | null>(null);
   const [archiveLoading, setArchiveLoading] = useState(false);
+  const { confirmAction } = useConfirmAction();
   const { showToast } = useToast();
 
   // Filters
@@ -428,15 +430,18 @@ export function ContractPreview() {
 
       {/* Table */}
       <Card className="overflow-hidden p-0 dark:bg-slate-900 dark:border-slate-800">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="w-full overflow-x-auto md:overflow-x-visible">
+          <table className="w-full min-w-[820px] table-fixed text-sm md:min-w-0">
             <thead>
               <tr className="border-b border-border bg-slate-50 dark:bg-slate-950">
-                {["N° CONTRAT", "CLIENT", "VOITURE", "PÉRIODE", "STATUT", "GÉNÉRÉ LE", "SIGNATURE", "ACTIONS"].map((h) => (
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" key={h}>
-                    {h}
-                  </th>
-                ))}
+                <th className="w-[110px] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[130px]">N° contrat</th>
+                <th className="min-w-0 px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Client</th>
+                <th className="min-w-0 px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Voiture</th>
+                <th className="w-[126px] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[146px]">Période</th>
+                <th className="w-[92px] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[108px]">Statut</th>
+                <th className="w-[96px] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[112px]">Généré</th>
+                <th className="w-[96px] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[112px]">Signature</th>
+                <th className="w-[154px] px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[176px]">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -451,7 +456,15 @@ export function ContractPreview() {
                   <ContractTableRow
                     key={row.contract.id}
                     onDownload={() => void downloadContract(row)}
-                    onArchive={() => setArchiveContract(row.contract)}
+                    onArchive={() =>
+                      confirmAction({
+                        action: "archiver",
+                        confirmLabel: "Archiver",
+                        description: `Le contrat ${row.contract.contractNumber} sera déplacé dans les archives.`,
+                        title: "Archiver ce contrat ?",
+                        onConfirm: () => setArchiveContract(row.contract),
+                      })
+                    }
                     onPrint={() => printContract(row.contract)}
                     onView={() => setSelected(row.contract)}
                     row={row}
@@ -566,20 +579,20 @@ function ContractTableRow({
   return (
     <tr className="border-b border-border last:border-0 transition hover:bg-slate-50/60 dark:hover:bg-slate-950/40">
       {/* N° Contrat */}
-      <td className="px-4 py-3">
-        <span className="font-mono text-sm font-semibold text-foreground">{row.contract.contractNumber}</span>
+      <td className="overflow-hidden whitespace-nowrap px-2 py-3">
+        <span className="block truncate font-mono text-sm font-semibold text-foreground">{row.contract.contractNumber}</span>
       </td>
 
       {/* Client */}
-      <td className="px-4 py-3">
+      <td className="min-w-0 overflow-hidden px-2 py-3">
         {row.client ? (
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-2 lg:gap-3">
             <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white", avatarColor(row.client.id))}>
               {clientInitials(normalizeClientName(row.client.fullName))}
             </div>
-            <div>
-              <p className="font-semibold text-foreground">{normalizeClientName(row.client.fullName)}</p>
-              <p className="text-xs text-muted-foreground">
+            <div className="min-w-0">
+              <p className="truncate font-semibold text-foreground">{normalizeClientName(row.client.fullName)}</p>
+              <p className="truncate text-xs text-muted-foreground">
                 {row.client.cin ? `CIN : ${row.client.cin}` : row.client.passportNumber ? `Passeport : ${row.client.passportNumber}` : ""}
               </p>
             </div>
@@ -590,15 +603,15 @@ function ContractTableRow({
       </td>
 
       {/* Voiture */}
-      <td className="px-4 py-3">
+      <td className="min-w-0 overflow-hidden px-2 py-3">
         {row.car ? (
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-500 dark:bg-slate-800">
               <CarIcon className="h-4 w-4" />
             </div>
-            <div>
-              <p className="font-medium text-foreground">{formatCarName(row.car.brand, row.car.model)}</p>
-              <p className="text-xs text-muted-foreground">{formatRegistrationNumber(row.car.registrationNumber)}</p>
+            <div className="min-w-0">
+              <p className="truncate font-medium text-foreground">{formatCarName(row.car.brand, row.car.model)}</p>
+              <p className="truncate text-xs text-muted-foreground">{formatRegistrationNumber(row.car.registrationNumber)}</p>
             </div>
           </div>
         ) : (
@@ -607,14 +620,14 @@ function ContractTableRow({
       </td>
 
       {/* Période */}
-      <td className="px-4 py-3">
+      <td className="overflow-hidden px-2 py-3">
         {row.reservation ? (
           <div className="text-sm">
-            <p className="text-foreground">{period.start} -</p>
-            <p className="text-foreground">{period.end}</p>
-            <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-              <CalendarDays className="h-3 w-3" />
-              {period.duration}
+            <p className="truncate text-foreground">{period.start} -</p>
+            <p className="truncate text-foreground">{period.end}</p>
+            <p className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+              <CalendarDays className="h-3 w-3 shrink-0" />
+              <span className="truncate">{period.duration}</span>
             </p>
           </div>
         ) : (
@@ -623,24 +636,24 @@ function ContractTableRow({
       </td>
 
       {/* Statut */}
-      <td className="px-4 py-3">
-        <span className={cn("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold", getDisplayStatusStyle(row.displayStatus))}>
-          {getDisplayStatusLabel(row.displayStatus)}
+      <td className="overflow-hidden px-2 py-3">
+        <span className={cn("inline-flex max-w-full items-center rounded-full px-2 py-0.5 text-xs font-semibold", getDisplayStatusStyle(row.displayStatus))}>
+          <span className="truncate">{getDisplayStatusLabel(row.displayStatus)}</span>
         </span>
       </td>
 
       {/* Généré le */}
-      <td className="px-4 py-3">
-        <p className="text-sm text-foreground">{generated.date}</p>
-        {generated.time && <p className="text-xs text-muted-foreground">{generated.time}</p>}
+      <td className="overflow-hidden whitespace-nowrap px-2 py-3">
+        <p className="truncate text-sm text-foreground">{generated.date}</p>
+        {generated.time && <p className="truncate text-xs text-muted-foreground">{generated.time}</p>}
       </td>
 
       {/* Signature */}
-      <td className="px-4 py-3">
+      <td className="overflow-hidden whitespace-nowrap px-2 py-3">
         {signature ? (
           <>
-            <p className="text-sm text-foreground">{signature.date}</p>
-            {signature.time && <p className="text-xs text-muted-foreground">{signature.time}</p>}
+            <p className="truncate text-sm text-foreground">{signature.date}</p>
+            {signature.time && <p className="truncate text-xs text-muted-foreground">{signature.time}</p>}
           </>
         ) : (
           <span className="text-muted-foreground">-</span>
@@ -648,12 +661,16 @@ function ContractTableRow({
       </td>
 
       {/* Actions */}
-      <td className="px-4 py-3">
-        <div className="flex items-center gap-2">
-          <ActionIconButton color="blue" icon={Eye} label="Voir contrat" onClick={onView} />
-          <ActionIconButton color="emerald" icon={Download} label="Télécharger" onClick={onDownload} />
-          <ActionIconButton color="slate" icon={Printer} label="Imprimer" onClick={onPrint} />
-          <ActionIconButton color="violet" icon={Archive} label="Archiver" onClick={onArchive} />
+      <td className="px-3 py-3">
+        <div className="flex justify-end">
+          <DataGridActionMenu
+            actions={[
+              { icon: Eye, label: "Voir contrat", onClick: onView },
+              { icon: Download, label: "Télécharger", onClick: onDownload },
+              { icon: Printer, label: "Imprimer", onClick: onPrint },
+              { icon: Archive, label: "Archiver", onClick: onArchive },
+            ]}
+          />
         </div>
       </td>
     </tr>

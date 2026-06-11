@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { PageHeader } from "@/app/layout";
 import { ArchiveConfirmDialog } from "@/components/archive/ArchiveConfirmDialog";
@@ -47,12 +48,16 @@ const initialFilters: ReservationFiltersState = {
 };
 
 export function ReservationsPage() {
+  const [searchParams] = useSearchParams();
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [cars, setCars] = useState<Car[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
-  const [filters, setFilters] = useState<ReservationFiltersState>(initialFilters);
-  const [viewMode, setViewMode] = useState<ReservationViewMode>(() => readStoredViewMode());
+  const [filters, setFilters] = useState<ReservationFiltersState>(() => ({
+    ...initialFilters,
+    carId: readCarIdSearchParam(searchParams),
+  }));
+  const [viewMode, setViewMode] = useState<ReservationViewMode>(() => readInitialViewMode(searchParams));
   const [calendarMode, setCalendarMode] = useState<CalendarDisplayMode>("month");
   const [monthDate, setMonthDate] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState(() => getLocalDateKey(new Date()));
@@ -69,6 +74,19 @@ export function ReservationsPage() {
   useEffect(() => {
     void reload();
   }, []);
+
+  useEffect(() => {
+    const requestedCarId = readCarIdSearchParam(searchParams);
+    const requestedViewMode = readViewModeSearchParam(searchParams);
+
+    if (searchParams.has("carId")) {
+      setFilters({ ...initialFilters, carId: requestedCarId });
+    }
+
+    if (requestedViewMode) {
+      setViewMode(requestedViewMode);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     window.localStorage.setItem(RESERVATIONS_VIEW_MODE_STORAGE_KEY, viewMode);
@@ -173,7 +191,6 @@ export function ReservationsPage() {
   }
 
   async function handleDeleteReservation(reservation: Reservation) {
-    if (!window.confirm("Supprimer cette réservation ? Les paiements et le contrat liés seront aussi supprimés.")) return;
     try {
       await deleteReservation(reservation.id);
       setSelectedReservationId(null);
@@ -365,6 +382,20 @@ function readStoredViewMode(): ReservationViewMode {
   if (typeof window === "undefined") return "calendar";
   const stored = window.localStorage.getItem(RESERVATIONS_VIEW_MODE_STORAGE_KEY);
   return stored === "list" || stored === "calendar" ? stored : "calendar";
+}
+
+function readInitialViewMode(searchParams: URLSearchParams): ReservationViewMode {
+  return readViewModeSearchParam(searchParams) ?? readStoredViewMode();
+}
+
+function readViewModeSearchParam(searchParams: URLSearchParams): ReservationViewMode | null {
+  const view = searchParams.get("view");
+  return view === "list" || view === "calendar" ? view : null;
+}
+
+function readCarIdSearchParam(searchParams: URLSearchParams) {
+  const carId = Number(searchParams.get("carId"));
+  return Number.isFinite(carId) && carId > 0 ? carId : 0;
 }
 
 function getStatusToastTitle(status: Reservation["status"]) {

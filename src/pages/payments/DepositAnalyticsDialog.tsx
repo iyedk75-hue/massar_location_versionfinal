@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import {
   CartesianGrid,
   Cell,
@@ -27,6 +26,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DataGridActionMenu } from "@/components/ui/action-menu/DataGridActionMenu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { AppPagination } from "@/components/ui/pagination/AppPagination";
@@ -375,19 +375,19 @@ function ChartPanel({ children, title }: { children: React.ReactNode; title: str
 
 function DepositDataGrid({ onRefund, rows }: { onRefund: (reservationId: number) => void; rows: DepositRow[] }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[1180px] text-left text-sm">
+    <div className="w-full overflow-x-auto md:overflow-x-visible">
+      <table className="w-full min-w-[900px] table-fixed text-left text-sm md:min-w-0">
         <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-slate-950 dark:text-slate-400">
           <tr>
-            <DepositHead>Client</DepositHead>
-            <DepositHead>Réservation</DepositHead>
-            <DepositHead>Date versement</DepositHead>
-            <DepositHead>Montant</DepositHead>
-            <DepositHead>Remboursé le</DepositHead>
-            <DepositHead>Statut</DepositHead>
-            <DepositHead>Montant remboursé</DepositHead>
-            <DepositHead>Restant</DepositHead>
-            <DepositHead className="text-right">Actions</DepositHead>
+            <DepositHead className="min-w-0">Client</DepositHead>
+            <DepositHead className="min-w-0">Réservation</DepositHead>
+            <DepositHead className="w-[118px] lg:w-[140px]">Versement</DepositHead>
+            <DepositHead className="w-[94px] lg:w-[110px]">Montant</DepositHead>
+            <DepositHead className="w-[118px] lg:w-[140px]">Remboursé</DepositHead>
+            <DepositHead className="w-[96px] lg:w-[112px]">Statut</DepositHead>
+            <DepositHead className="w-[108px] lg:w-[126px]">Remboursé</DepositHead>
+            <DepositHead className="w-[92px] lg:w-[108px]">Restant</DepositHead>
+            <DepositHead className="w-[118px] text-right lg:w-[136px]">Actions</DepositHead>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -400,60 +400,44 @@ function DepositDataGrid({ onRefund, rows }: { onRefund: (reservationId: number)
           ) : (
             rows.map((row) => (
               <tr className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/60" key={row.id}>
-                <DepositCell>
-                  <div className="flex items-center gap-3">
+                <DepositCell className="min-w-0 overflow-hidden">
+                  <div className="flex min-w-0 items-center gap-2 lg:gap-3">
                     <ClientAvatar name={row.client?.fullName ?? "Client"} />
-                    <div>
-                      <p className="font-semibold text-slate-900 dark:text-slate-100">{row.client ? normalizeClientName(row.client.fullName) : "Client inconnu"}</p>
-                      <p className="mt-0.5 text-xs font-medium text-slate-500 dark:text-slate-400">{getClientIdentity(row.client)}</p>
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-slate-900 dark:text-slate-100">{row.client ? normalizeClientName(row.client.fullName) : "Client inconnu"}</p>
+                      <p className="mt-0.5 truncate text-xs font-medium text-slate-500 dark:text-slate-400">{getClientIdentity(row.client)}</p>
                     </div>
                   </div>
                 </DepositCell>
-                <DepositCell>
-                  <p className="font-semibold text-slate-900 dark:text-slate-100">{row.reservationCode}</p>
-                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{row.car ? formatCarName(row.car.brand, row.car.model) : "Voiture inconnue"}</p>
+                <DepositCell className="min-w-0 overflow-hidden">
+                  <p className="truncate font-semibold text-slate-900 dark:text-slate-100">{row.reservationCode}</p>
+                  <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">{row.car ? formatCarName(row.car.brand, row.car.model) : "Voiture inconnue"}</p>
                 </DepositCell>
-                <DepositCell>{formatDateLine(row.depositPayment?.paymentDate)}</DepositCell>
-                <DepositCell>
+                <DepositCell className="overflow-hidden whitespace-nowrap">{formatDateLine(row.depositPayment?.paymentDate)}</DepositCell>
+                <DepositCell className="overflow-hidden">
                   <MoneyPill tone="orange" value={row.depositPaid} />
                 </DepositCell>
-                <DepositCell>{row.refundedAt ? formatDateLine(row.refundedAt) : "-"}</DepositCell>
-                <DepositCell>
+                <DepositCell className="overflow-hidden whitespace-nowrap">{row.refundedAt ? formatDateLine(row.refundedAt) : "-"}</DepositCell>
+                <DepositCell className="overflow-hidden">
                   <DepositStatusBadge status={row.status} />
                 </DepositCell>
-                <DepositCell>
-                  <span className="font-bold text-emerald-600 dark:text-emerald-300">{formatMoney(row.refundedAmount)}</span>
+                <DepositCell className="overflow-hidden whitespace-nowrap">
+                  <span className="block truncate font-bold text-emerald-600 dark:text-emerald-300">{formatMoney(row.refundedAmount)}</span>
                 </DepositCell>
-                <DepositCell>
+                <DepositCell className="overflow-hidden">
                   <MoneyPill tone={row.remaining > 0 ? "red" : "green"} value={row.remaining} />
                 </DepositCell>
                 <DepositCell className="text-right">
-                  <div className="flex justify-end gap-1">
-                    {row.depositPayment ? (
-                      <Button asChild className="h-9 w-9 rounded-xl" size="icon" title="Voir" variant="ghost">
-                        <Link to={`/payments/${row.depositPayment.id}`}>
-                          <Eye className="h-4 w-4" />
-                        </Link>
-                      </Button>
-                    ) : (
-                      <Button className="h-9 w-9 rounded-xl" disabled size="icon" title="Voir" variant="ghost">
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                    )}
-                    <Button className="h-9 w-9 rounded-xl" size="icon" title="Historique" type="button" variant="ghost">
-                      <History className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      className="h-9 w-9 rounded-xl text-emerald-600 hover:text-emerald-700 disabled:text-slate-300"
-                      disabled={row.remaining <= 0}
-                      onClick={() => onRefund(row.reservation.id)}
-                      size="icon"
-                      title="Rembourser"
-                      type="button"
-                      variant="ghost"
-                    >
-                      <RotateCcw className="h-4 w-4" />
-                    </Button>
+                  <div className="flex justify-end">
+                    <DataGridActionMenu
+                      actions={[
+                        row.depositPayment
+                          ? { href: `/payments/${row.depositPayment.id}`, icon: Eye, label: "Voir" }
+                          : { disabled: true, icon: Eye, label: "Voir" },
+                        { icon: History, label: "Historique" },
+                        { disabled: row.remaining <= 0, icon: RotateCcw, label: "Rembourser", onClick: () => onRefund(row.reservation.id) },
+                      ]}
+                    />
                   </div>
                 </DepositCell>
               </tr>
@@ -504,11 +488,11 @@ function ModernTooltip({ active, payload, label }: { active?: boolean; label?: s
 }
 
 function DepositHead({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <th className={cn("px-5 py-3 font-bold", className)}>{children}</th>;
+  return <th className={cn("px-2 py-3 font-bold", className)}>{children}</th>;
 }
 
 function DepositCell({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <td className={cn("px-5 py-3 align-middle", className)}>{children}</td>;
+  return <td className={cn("px-2 py-3 align-middle", className)}>{children}</td>;
 }
 
 function DepositStatusBadge({ status }: { status: DepositStatus }) {
@@ -518,7 +502,7 @@ function DepositStatusBadge({ status }: { status: DepositStatus }) {
     "Remboursée": "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900",
   };
 
-  return <span className={cn("inline-flex rounded-lg px-2.5 py-1 text-xs font-bold ring-1", classes)}>{status}</span>;
+  return <span className={cn("inline-flex max-w-full rounded-lg px-2 py-1 text-xs font-bold ring-1", classes)}><span className="truncate">{status}</span></span>;
 }
 
 function MoneyPill({ tone, value }: { tone: "green" | "orange" | "red"; value: number }) {
@@ -528,7 +512,7 @@ function MoneyPill({ tone, value }: { tone: "green" | "orange" | "red"; value: n
     red: "bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-900",
   }[tone];
 
-  return <span className={cn("inline-flex rounded-lg px-2.5 py-1 text-xs font-bold ring-1", classes)}>{formatMoney(value)}</span>;
+  return <span className={cn("inline-flex max-w-full rounded-lg px-2 py-1 text-xs font-bold ring-1", classes)}><span className="truncate">{formatMoney(value)}</span></span>;
 }
 
 function ClientAvatar({ name }: { name: string }) {

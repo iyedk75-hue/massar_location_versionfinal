@@ -12,10 +12,9 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { Link } from "react-router-dom";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
-import { ActionIconButton } from "@/components/ui/action-buttons/ActionIconButton";
+import { DataGridActionMenu } from "@/components/ui/action-menu/DataGridActionMenu";
 import { AppPagination } from "@/components/ui/pagination/AppPagination";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -29,6 +28,7 @@ import { formatDrivingLicense, formatPhoneNumber, normalizeClientName } from "@/
 import { formatShortPeriod } from "@/utils/date";
 import { formatMoney } from "@/utils/money";
 import { useToast } from "@/hooks/useToast";
+import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { readStoredPageSize, writeStoredPageSize } from "@/lib/pagination";
 
 const clientsPageSizeKey = "massar-pagination-page-size-clients";
@@ -50,6 +50,7 @@ export function ClientsPage() {
   const [detailsClient, setDetailsClient] = useState<Client | null>(null);
   const [selectedClientIds, setSelectedClientIds] = useState<number[]>([]);
   const [bulkActionsOpen, setBulkActionsOpen] = useState(false);
+  const { confirmAction } = useConfirmAction();
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -160,7 +161,7 @@ export function ClientsPage() {
     writeStoredPageSize(clientsPageSizeKey, nextPageSize);
   }
 
-  async function handleSelectedClientStatus(action: "activate" | "deactivate") {
+  function handleSelectedClientStatus(action: "activate" | "deactivate") {
     const targets = selectedClients.filter((client) => (action === "activate" ? !isClientActive(client) : isClientActive(client)));
 
     if (!selectedClients.length) {
@@ -179,27 +180,31 @@ export function ClientsPage() {
       return;
     }
 
-    if (action === "deactivate" && !window.confirm(`Désactiver ${targets.length} client${targets.length > 1 ? "s" : ""} sélectionné${targets.length > 1 ? "s" : ""} ?`)) {
-      setBulkActionsOpen(false);
-      return;
-    }
+    const isActivation = action === "activate";
+    confirmAction({
+      action: isActivation ? "reactiver" : "désactiver",
+      confirmLabel: isActivation ? "Activer" : "Désactiver",
+      description: `${targets.length} client${targets.length > 1 ? "s" : ""} seront ${isActivation ? "activés" : "désactivés"}.`,
+      title: isActivation ? "Activer la sélection ?" : "Désactiver la sélection ?",
+      onConfirm: async () => {
+        try {
+          const updatedClients = await Promise.all(
+            targets.map((client) => (action === "activate" ? reactivateClient(client.id) : deactivateClient(client.id))),
+          );
+          const updatedById = new Map(updatedClients.map((client) => [client.id, client]));
 
-    try {
-      const updatedClients = await Promise.all(
-        targets.map((client) => (action === "activate" ? reactivateClient(client.id) : deactivateClient(client.id))),
-      );
-      const updatedById = new Map(updatedClients.map((client) => [client.id, client]));
-
-      setClients((current) => current.map((client) => updatedById.get(client.id) ?? client));
-      setSelectedClientIds([]);
-      setBulkActionsOpen(false);
-      showToast({
-        title: action === "activate" ? "Clients activés" : "Clients désactivés",
-        type: "success",
-      });
-    } catch (caught) {
-      showToast({ message: getErrorMessage(caught), title: "Action impossible", type: "error" });
-    }
+          setClients((current) => current.map((client) => updatedById.get(client.id) ?? client));
+          setSelectedClientIds([]);
+          setBulkActionsOpen(false);
+          showToast({
+            title: action === "activate" ? "Clients activés" : "Clients désactivés",
+            type: "success",
+          });
+        } catch (caught) {
+          showToast({ message: getErrorMessage(caught), title: "Action impossible", type: "error" });
+        }
+      },
+    });
   }
 
   async function handleSubmit(data: CreateClientDto) {
@@ -220,25 +225,40 @@ export function ClientsPage() {
     }
   }
 
-  async function handleDeactivate(id: number) {
-    if (!window.confirm("Désactiver ce client ? Il restera visible dans l'historique.")) return;
-    try {
-      const client = await deactivateClient(id);
-      setClients((current) => current.map((item) => (item.id === id ? client : item)));
-      showToast({ title: "Client désactivé", type: "success" });
-    } catch (caught) {
-      showToast({ message: getErrorMessage(caught), title: "Désactivation impossible", type: "error" });
-    }
+  function handleDeactivate(id: number) {
+    confirmAction({
+      action: "désactiver",
+      confirmLabel: "Désactiver",
+      description: "Le client restera visible dans l'historique, mais ne sera plus actif.",
+      title: "Désactiver ce client ?",
+      onConfirm: async () => {
+        try {
+          const client = await deactivateClient(id);
+          setClients((current) => current.map((item) => (item.id === id ? client : item)));
+          showToast({ title: "Client désactivé", type: "success" });
+        } catch (caught) {
+          showToast({ message: getErrorMessage(caught), title: "Désactivation impossible", type: "error" });
+        }
+      },
+    });
   }
 
-  async function handleReactivate(id: number) {
-    try {
-      const client = await reactivateClient(id);
-      setClients((current) => current.map((item) => (item.id === id ? client : item)));
-      showToast({ title: "Client réactivé", type: "success" });
-    } catch (caught) {
-      showToast({ message: getErrorMessage(caught), title: "Réactivation impossible", type: "error" });
-    }
+  function handleReactivate(id: number) {
+    confirmAction({
+      action: "réactiver",
+      confirmLabel: "Réactiver",
+      description: "Le client redeviendra actif dans l'application.",
+      title: "Réactiver ce client ?",
+      onConfirm: async () => {
+        try {
+          const client = await reactivateClient(id);
+          setClients((current) => current.map((item) => (item.id === id ? client : item)));
+          showToast({ title: "Client réactivé", type: "success" });
+        } catch (caught) {
+          showToast({ message: getErrorMessage(caught), title: "Réactivation impossible", type: "error" });
+        }
+      },
+    });
   }
 
   const history = reservations.filter(
@@ -341,7 +361,7 @@ export function ClientsPage() {
                 <button
                   className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={!selectedClientIds.length}
-                  onClick={() => void handleSelectedClientStatus("activate")}
+                  onClick={() => handleSelectedClientStatus("activate")}
                   type="button"
                 >
                   <UserCheck className="h-4 w-4" />
@@ -350,7 +370,7 @@ export function ClientsPage() {
                 <button
                   className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={!selectedClientIds.length}
-                  onClick={() => void handleSelectedClientStatus("deactivate")}
+                  onClick={() => handleSelectedClientStatus("deactivate")}
                   type="button"
                 >
                   <UserX className="h-4 w-4" />
@@ -362,11 +382,11 @@ export function ClientsPage() {
         </div>
 
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[920px] text-left text-sm">
+          <div className="w-full overflow-x-auto md:overflow-x-visible">
+            <table className="w-full min-w-[760px] table-fixed text-left text-sm md:min-w-0">
               <thead className="bg-slate-100/80 text-xs uppercase text-slate-500">
                 <tr>
-                  <th className="w-14 px-5 py-4">
+                  <th className="w-10 px-3 py-4">
                     <input
                       aria-label="Sélectionner les clients visibles"
                       checked={allVisibleClientsSelected}
@@ -376,13 +396,13 @@ export function ClientsPage() {
                       type="checkbox"
                     />
                   </th>
-                  <th className="px-5 py-4 font-semibold">Client</th>
-                  <th className="px-5 py-4 font-semibold">Téléphone</th>
-                  <th className="px-5 py-4 font-semibold">Permis</th>
-                  <th className="px-5 py-4 font-semibold">Locations</th>
-                  <th className="px-5 py-4 font-semibold">Dernière location</th>
-                  <th className="px-5 py-4 font-semibold">Statut</th>
-                  <th className="px-5 py-4 text-right font-semibold">Actions</th>
+                  <th className="min-w-0 px-2 py-4 font-semibold">Client</th>
+                  <th className="w-[112px] px-2 py-4 font-semibold lg:w-[130px]">Téléphone</th>
+                  <th className="w-[106px] px-2 py-4 font-semibold lg:w-[124px]">Permis</th>
+                  <th className="w-[72px] px-2 py-4 font-semibold lg:w-[86px]">Loc.</th>
+                  <th className="w-[118px] px-2 py-4 font-semibold lg:w-[140px]">Dernière</th>
+                  <th className="w-[86px] px-2 py-4 font-semibold lg:w-[100px]">Statut</th>
+                  <th className="w-[118px] px-3 py-4 text-right font-semibold lg:w-[132px]">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
@@ -398,7 +418,7 @@ export function ClientsPage() {
                         }`}
                         key={client.id}
                       >
-                        <td className="px-5 py-4">
+                        <td className="w-10 px-3 py-4">
                           <input
                             aria-label={`Sélectionner ${normalizeClientName(client.fullName)}`}
                             checked={selectedClientIdsSet.has(client.id)}
@@ -407,19 +427,23 @@ export function ClientsPage() {
                             type="checkbox"
                           />
                         </td>
-                        <td className="px-5 py-4">
+                        <td className="min-w-0 overflow-hidden px-2 py-4">
                           <ClientIdentity client={client} locationsCount={locationsCount} />
                         </td>
-                        <td className="px-5 py-4 font-medium text-slate-700">{formatPhoneNumber(client.phone)}</td>
-                        <td className="px-5 py-4 text-slate-600">{formatDrivingLicense(client.drivingLicense)}</td>
-                        <td className="px-5 py-4 font-semibold text-slate-700">{locationsCount}</td>
-                        <td className="px-5 py-4 font-medium text-slate-700">
-                          {lastReservation ? formatReadableDate(lastReservation.startDate) : "-"}
+                        <td className="overflow-hidden whitespace-nowrap px-2 py-4 font-medium text-slate-700">
+                          <span className="block truncate">{formatPhoneNumber(client.phone)}</span>
                         </td>
-                        <td className="px-5 py-4">
+                        <td className="overflow-hidden whitespace-nowrap px-2 py-4 text-slate-600">
+                          <span className="block truncate">{formatDrivingLicense(client.drivingLicense)}</span>
+                        </td>
+                        <td className="overflow-hidden whitespace-nowrap px-2 py-4 font-semibold text-slate-700">{locationsCount}</td>
+                        <td className="overflow-hidden whitespace-nowrap px-2 py-4 font-medium text-slate-700">
+                          <span className="block truncate">{lastReservation ? formatReadableDate(lastReservation.startDate) : "-"}</span>
+                        </td>
+                        <td className="overflow-hidden px-2 py-4">
                           <ClientStatusBadge isActive={isClientActive(client)} />
                         </td>
-                        <td className="px-5 py-4">
+                        <td className="px-3 py-4">
                           <ClientActions
                             client={client}
                             onDeactivate={handleDeactivate}
@@ -567,7 +591,7 @@ function isClientActive(client: Client) {
 
 function ClientIdentity({ client, locationsCount }: { client: Client; locationsCount: number }) {
   return (
-    <div className="flex min-w-0 items-center gap-3">
+    <div className="flex min-w-0 items-center gap-2 lg:gap-3">
       <ClientAvatar name={client.fullName} />
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
@@ -601,7 +625,7 @@ function ClientAvatar({ name }: { name: string }) {
   const color = palette[name.length % palette.length];
 
   return (
-    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${color}`}>
+    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold lg:h-10 lg:w-10 ${color}`}>
       {initials || "CL"}
     </span>
   );
@@ -618,19 +642,18 @@ function ClientActions({
   onEdit: () => void;
   onReactivate: (id: number) => void;
 }) {
+  const active = isClientActive(client);
+
   return (
-    <div className="flex justify-end gap-2">
-      <ActionIconButton asChild color="blue" icon={Eye} label="Voir détails">
-        <Link to={`/clients/${client.id}`}>
-          <Eye className="h-4 w-4" />
-        </Link>
-      </ActionIconButton>
-      <ActionIconButton color="amber" icon={Pencil} label="Modifier" onClick={onEdit} />
-      <ActionIconButton
-        color={isClientActive(client) ? "red" : "emerald"}
-        icon={isClientActive(client) ? UserX : UserCheck}
-        label={isClientActive(client) ? "Désactiver" : "Réactiver"}
-        onClick={() => (isClientActive(client) ? onDeactivate(client.id) : onReactivate(client.id))}
+    <div className="flex justify-end">
+      <DataGridActionMenu
+        actions={[
+          { href: `/clients/${client.id}`, icon: Eye, label: "Voir détails" },
+          { icon: Pencil, label: "Modifier", onClick: onEdit },
+          active
+            ? { destructive: true, icon: UserX, label: "Désactiver", onClick: () => onDeactivate(client.id) }
+            : { icon: UserCheck, label: "Réactiver", onClick: () => onReactivate(client.id) },
+        ]}
       />
     </div>
   );
@@ -641,11 +664,11 @@ function ClientStatusBadge({ isActive }: { isActive: boolean }) {
     <span
       className={
         isActive
-          ? "inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200"
-          : "inline-flex rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 ring-1 ring-rose-200"
+          ? "inline-flex max-w-full rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200"
+          : "inline-flex max-w-full rounded-full bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 ring-1 ring-rose-200"
       }
     >
-      {isActive ? "Actif" : "Inactif"}
+      <span className="truncate">{isActive ? "Actif" : "Inactif"}</span>
     </span>
   );
 }

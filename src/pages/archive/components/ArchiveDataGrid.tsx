@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Download, Eye, RotateCcw, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { ActionIconButton } from "@/components/ui/action-buttons/ActionIconButton";
+import { DataGridActionMenu } from "@/components/ui/action-menu/DataGridActionMenu";
 import { AppPagination } from "@/components/ui/pagination/AppPagination";
 import type { ArchiveItem, ArchiveType } from "@/types/archive";
 import { cn } from "@/lib/utils";
@@ -54,45 +54,53 @@ export function ArchiveDataGrid({ items, onDelete, onExport, onRestore, onView }
 
   return (
     <Card className="overflow-hidden rounded-[14px] border-slate-200 bg-white p-0 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[980px] text-left text-sm">
+      <div className="w-full overflow-x-auto md:overflow-x-visible">
+        <table className="w-full min-w-[760px] table-fixed text-left text-sm md:min-w-0">
           <thead className="border-b border-border bg-slate-50/80 text-xs uppercase text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
             <tr>
-              <th className="px-5 py-4 font-bold">Type</th>
-              <th className="px-5 py-4 font-bold">Nom / Référence</th>
-              <th className="px-5 py-4 font-bold">Description</th>
-              <th className="px-5 py-4 font-bold">Date archivage</th>
-              <th className="px-5 py-4 font-bold">Raison</th>
-              <th className="px-5 py-4 font-bold">Statut</th>
-              <th className="px-5 py-4 text-right font-bold">Actions</th>
+              <th className="w-[96px] px-2 py-4 font-bold lg:w-[112px]">Type</th>
+              <th className="min-w-0 px-2 py-4 font-bold">Nom / Référence</th>
+              <th className="min-w-0 px-2 py-4 font-bold">Description</th>
+              <th className="w-[128px] px-2 py-4 font-bold lg:w-[148px]">Date</th>
+              <th className="min-w-0 px-2 py-4 font-bold">Raison</th>
+              <th className="w-[96px] px-2 py-4 font-bold lg:w-[112px]">Statut</th>
+              <th className="w-[154px] px-3 py-4 text-right font-bold lg:w-[176px]">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border dark:divide-slate-800">
             {pageItems.map((item) => (
               <tr className="bg-white transition-smooth hover:bg-blue-50/40 dark:bg-slate-900 dark:hover:bg-blue-950/20" key={`${item.type}-${item.id}`}>
-                <td className="px-5 py-4">
-                  <span className={cn("inline-flex rounded-full px-2.5 py-1 text-xs font-bold ring-1", typeClasses[item.type])}>
-                    {typeLabels[item.type]}
+                <td className="overflow-hidden px-2 py-4">
+                  <span className={cn("inline-flex max-w-full rounded-full px-2 py-1 text-xs font-bold ring-1", typeClasses[item.type])}>
+                    <span className="truncate">{typeLabels[item.type]}</span>
                   </span>
                 </td>
-                <td className="px-5 py-4">
-                  <p className="font-semibold text-slate-950 dark:text-slate-100">{item.title}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground dark:text-slate-400">{item.subtitle}</p>
+                <td className="min-w-0 overflow-hidden px-2 py-4">
+                  <p className="truncate font-semibold text-slate-950 dark:text-slate-100">{item.title}</p>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground dark:text-slate-400">{item.subtitle}</p>
                 </td>
-                <td className="max-w-[320px] px-5 py-4 text-slate-600 dark:text-slate-300">
+                <td className="min-w-0 overflow-hidden px-2 py-4 text-slate-600 dark:text-slate-300">
                   <p className="truncate">{item.description || "-"}</p>
                 </td>
-                <td className="px-5 py-4 text-slate-600 dark:text-slate-300">{formatDate(item.archivedAt)}</td>
-                <td className="max-w-[240px] px-5 py-4 text-slate-600 dark:text-slate-300">
+                <td className="overflow-hidden whitespace-nowrap px-2 py-4 text-slate-600 dark:text-slate-300">
+                  <span className="block truncate">{formatDate(item.archivedAt)}</span>
+                </td>
+                <td className="min-w-0 overflow-hidden px-2 py-4 text-slate-600 dark:text-slate-300">
                   <p className="truncate">{item.archivedReason || "-"}</p>
                 </td>
-                <td className="px-5 py-4 text-slate-600 dark:text-slate-300">{item.status || "-"}</td>
-                <td className="px-5 py-4">
-                  <div className="flex justify-end gap-2">
-                    <ActionIconButton color="blue" icon={Eye} label="Voir détails" onClick={() => onView(item)} />
-                    <ActionIconButton color="emerald" icon={RotateCcw} label="Restaurer" onClick={() => onRestore(item)} />
-                    <ActionIconButton color="emerald" icon={Download} label="Exporter" onClick={() => onExport(item)} />
-                    <ActionIconButton color="red" icon={Trash2} label="Supprimer définitivement" onClick={() => onDelete(item)} />
+                <td className="overflow-hidden whitespace-nowrap px-2 py-4 text-slate-600 dark:text-slate-300">
+                  <span className="block truncate">{item.status || "-"}</span>
+                </td>
+                <td className="px-3 py-4">
+                  <div className="flex justify-end">
+                    <DataGridActionMenu
+                      actions={[
+                        { icon: Eye, label: "Voir détails", onClick: () => onView(item) },
+                        { icon: RotateCcw, label: "Restaurer", onClick: () => onRestore(item) },
+                        { icon: Download, label: "Exporter", onClick: () => onExport(item) },
+                        { destructive: true, icon: Trash2, label: "Supprimer définitivement", onClick: () => onDelete(item) },
+                      ]}
+                    />
                   </div>
                 </td>
               </tr>

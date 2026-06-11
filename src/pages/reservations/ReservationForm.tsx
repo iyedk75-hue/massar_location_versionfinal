@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useForm } from "react-hook-form";
+import { AlertCircleIcon } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -298,7 +300,14 @@ export function ReservationForm({
           value={carId}
         />
         {selectedCarAvailability?.bookedOnPeriod && (
-          <p className="mt-1 text-xs text-destructive">Cette voiture est d?j? r?serv?e sur cette p?riode.</p>
+          <Alert className="mt-2" variant="destructive">
+            <AlertCircleIcon />
+            <AlertTitle>Voiture indisponible</AlertTitle>
+            <AlertDescription>
+              Cette voiture est déjà réservée sur cette période.
+              Veuillez sélectionner une autre voiture ou modifier les dates.
+            </AlertDescription>
+          </Alert>
         )}
         {selectedCarAvailability?.technicalVisitExpired && (
           <p className="mt-1 text-xs text-destructive">La visite technique est expir?e pour cette p?riode.</p>
@@ -306,7 +315,9 @@ export function ReservationForm({
         {selectedCarAvailability?.unavailableStatus && (
           <p className="mt-1 text-xs text-destructive">Cette voiture est en maintenance ou indisponible.</p>
         )}
-        {errors.carId && <p className="mt-1 text-xs text-destructive">{errors.carId.message}</p>}
+        {errors.carId && !selectedCarAvailability?.bookedOnPeriod && (
+          <p className="mt-1 text-xs text-destructive">{errors.carId.message}</p>
+        )}
       </div>
 
       <div className="grid gap-3 lg:col-span-2 sm:grid-cols-2 xl:grid-cols-4">

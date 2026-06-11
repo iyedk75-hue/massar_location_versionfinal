@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
-  CalendarDays,
   Car as CarIcon,
   CheckCircle2,
-  CircleDollarSign,
   Eye,
   Fuel,
   Pencil,
@@ -15,12 +14,11 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react";
-import { Link } from "react-router-dom";
-import { getStatusLabel, StatusBadge } from "@/components/StatusBadge";
+import { getStatusLabel } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
-import { ActionIconButton } from "@/components/ui/action-buttons/ActionIconButton";
+import { DataGridActionMenu } from "@/components/ui/action-menu/DataGridActionMenu";
 import { AppPagination } from "@/components/ui/pagination/AppPagination";
-import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/SearchableSelect";
@@ -37,9 +35,9 @@ import {
   normalizeCarModel,
   normalizeRegistrationNumber,
 } from "@/utils/car";
-import { formatShortPeriod } from "@/utils/date";
 import { formatMoney } from "@/utils/money";
 import { useNotifications } from "@/hooks/useNotifications";
+import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useToast } from "@/hooks/useToast";
 import { readStoredPageSize, writeStoredPageSize } from "@/lib/pagination";
 
@@ -50,6 +48,7 @@ const carStatusFilterOptions = statuses.map((item) => ({ value: item, label: ite
 const fuelLevelOptions = fuelLevels.map((level) => ({ value: level, label: level }));
 
 export function CarsPage() {
+  const navigate = useNavigate();
   const [cars, setCars] = useState<Car[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [query, setQuery] = useState("");
@@ -58,13 +57,13 @@ export function CarsPage() {
   const [pageSize, setPageSize] = useState(() => readStoredPageSize(carsPageSizeKey));
   const [open, setOpen] = useState(false);
   const [editingCar, setEditingCar] = useState<Car | null>(null);
-  const [detailsCar, setDetailsCar] = useState<Car | null>(null);
   const [retourCar, setRetourCar] = useState<Car | null>(null);
   const [retourMileage, setRetourMileage] = useState<string>("");
   const [retourFuel, setRetourFuel] = useState<string>("Plein");
   const [selectedCarIds, setSelectedCarIds] = useState<number[]>([]);
   const [bulkActionsOpen, setBulkActionsOpen] = useState(false);
   const { push } = useNotifications();
+  const { confirmAction } = useConfirmAction();
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -204,40 +203,50 @@ export function CarsPage() {
     }
   }
 
-  async function handleDelete(id: number) {
-    if (!window.confirm("Supprimer cette voiture ?")) return;
-    try {
-      await deleteCar(id);
-      setCars((current) => current.filter((car) => car.id !== id));
-      showToast({ title: "Voiture supprimée", type: "success" });
-    } catch (caught) {
-      showToast({ message: getErrorMessage(caught), title: "Suppression impossible", type: "error" });
-    }
+  function handleDelete(id: number) {
+    confirmAction({
+      action: "supprimer",
+      confirmLabel: "Supprimer",
+      description: "Cette voiture sera supprimée de la flotte.",
+      title: "Supprimer cette voiture ?",
+      onConfirm: async () => {
+        try {
+          await deleteCar(id);
+          setCars((current) => current.filter((car) => car.id !== id));
+          showToast({ title: "Voiture supprimée", type: "success" });
+        } catch (caught) {
+          showToast({ message: getErrorMessage(caught), title: "Suppression impossible", type: "error" });
+        }
+      },
+    });
   }
 
-  async function handleSelectedCarsDelete() {
+  function handleSelectedCarsDelete() {
     if (!selectedCars.length) {
       showToast({ message: "Cochez au moins une voiture dans la liste.", title: "Aucune sélection", type: "info" });
       setBulkActionsOpen(false);
       return;
     }
 
-    if (!window.confirm(`Supprimer ${selectedCars.length} voiture${selectedCars.length > 1 ? "s" : ""} sélectionnée${selectedCars.length > 1 ? "s" : ""} ?`)) {
-      setBulkActionsOpen(false);
-      return;
-    }
+    confirmAction({
+      action: "supprimer",
+      confirmLabel: "Supprimer",
+      description: `${selectedCars.length} voiture${selectedCars.length > 1 ? "s" : ""} seront supprimées de la flotte.`,
+      title: "Supprimer la sélection ?",
+      onConfirm: async () => {
+        try {
+          await Promise.all(selectedCars.map((car) => deleteCar(car.id)));
+          const deletedIds = new Set(selectedCars.map((car) => car.id));
 
-    try {
-      await Promise.all(selectedCars.map((car) => deleteCar(car.id)));
-      const deletedIds = new Set(selectedCars.map((car) => car.id));
-
-      setCars((current) => current.filter((car) => !deletedIds.has(car.id)));
-      setSelectedCarIds([]);
-      setBulkActionsOpen(false);
-      showToast({ title: "Voitures supprimées", type: "success" });
-    } catch (caught) {
-      showToast({ message: getErrorMessage(caught), title: "Suppression impossible", type: "error" });
-    }
+          setCars((current) => current.filter((car) => !deletedIds.has(car.id)));
+          setSelectedCarIds([]);
+          setBulkActionsOpen(false);
+          showToast({ title: "Voitures supprimées", type: "success" });
+        } catch (caught) {
+          showToast({ message: getErrorMessage(caught), title: "Suppression impossible", type: "error" });
+        }
+      },
+    });
   }
 
   async function handleRetour() {
@@ -272,14 +281,6 @@ export function CarsPage() {
       showToast({ message: getErrorMessage(caught), title: "Erreur retour", type: "error" });
     }
   }
-
-  const detailsHistory = useMemo(
-    () =>
-      reservations
-        .filter((reservation) => reservation.carId === detailsCar?.id)
-        .sort((left, right) => new Date(right.startDate).getTime() - new Date(left.startDate).getTime()),
-    [detailsCar?.id, reservations],
-  );
 
   return (
     <>
@@ -376,7 +377,7 @@ export function CarsPage() {
                 <button
                   className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={!selectedCarIds.length}
-                  onClick={() => void handleSelectedCarsDelete()}
+                  onClick={handleSelectedCarsDelete}
                   type="button"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -388,11 +389,11 @@ export function CarsPage() {
         </div>
 
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] text-left text-sm">
+          <div className="w-full overflow-x-auto md:overflow-x-visible">
+            <table className="w-full min-w-[760px] table-fixed text-left text-sm md:min-w-0">
               <thead className="bg-slate-100/80 text-xs uppercase text-slate-500">
                 <tr>
-                  <th className="w-14 px-5 py-4">
+                  <th className="w-10 px-3 py-4">
                     <input
                       aria-label="Sélectionner les voitures visibles"
                       checked={allVisibleCarsSelected}
@@ -402,26 +403,27 @@ export function CarsPage() {
                       type="checkbox"
                     />
                   </th>
-                  <th className="px-5 py-4 font-semibold">Immatriculation</th>
-                  <th className="px-5 py-4 font-semibold">Voiture</th>
-                  <th className="px-5 py-4 font-semibold">Carburant</th>
-                  <th className="px-5 py-4 font-semibold">Prix/jour</th>
-                  <th className="px-5 py-4 font-semibold">Kilométrage</th>
-                  <th className="px-5 py-4 font-semibold">Alertes</th>
-                  <th className="px-5 py-4 font-semibold">Statut</th>
-                  <th className="px-5 py-4 text-right font-semibold">Actions</th>
+                  <th className="w-[108px] px-2 py-4 font-semibold lg:w-[126px]">Immat.</th>
+                  <th className="min-w-0 px-2 py-4 font-semibold">Voiture</th>
+                  <th className="w-[76px] px-2 py-4 font-semibold lg:w-[88px]">Carb.</th>
+                  <th className="w-[86px] px-2 py-4 font-semibold lg:w-[100px]">Prix</th>
+                  <th className="w-[92px] px-2 py-4 font-semibold lg:w-[110px]">Km</th>
+                  <th className="w-[104px] px-2 py-4 font-semibold lg:w-[124px]">Alertes</th>
+                  <th className="w-[112px] px-2 py-4 font-semibold lg:w-[126px]">Statut</th>
+                  <th className="w-[136px] px-3 py-4 text-right font-semibold lg:w-[150px]">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {paginatedCars.length ? (
                   paginatedCars.map((car) => (
                     <tr
-                      className={`transition-colors ${
+                      className={`cursor-pointer transition-colors ${
                         selectedCarIdsSet.has(car.id) ? "bg-blue-50/70 hover:bg-blue-50" : "hover:bg-slate-50/80"
                       }`}
                       key={car.id}
+                      onClick={() => navigate(`/cars/${car.id}`)}
                     >
-                      <td className="px-5 py-4">
+                      <td className="w-10 px-3 py-4" onClick={(event) => event.stopPropagation()}>
                         <input
                           aria-label={`Sélectionner ${formatCarName(car.brand, car.model)}`}
                           checked={selectedCarIdsSet.has(car.id)}
@@ -430,26 +432,26 @@ export function CarsPage() {
                           type="checkbox"
                         />
                       </td>
-                      <td className="px-5 py-4 font-semibold text-slate-700">
+                      <td className="overflow-hidden whitespace-nowrap px-2 py-4 font-semibold text-slate-700">
                         <RegistrationNumber value={car.registrationNumber} />
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="min-w-0 overflow-hidden px-2 py-4">
                         <CarIdentity car={car} />
                       </td>
-                      <td className="px-5 py-4 font-medium text-slate-700">{car.fuelType}</td>
-                      <td className="px-5 py-4 font-semibold text-slate-700">{formatMoney(car.dailyPrice)}</td>
-                      <td className="px-5 py-4 text-slate-600">{formatMileage(car.mileage)}</td>
-                      <td className="px-5 py-4">
+                      <td className="overflow-hidden whitespace-nowrap px-2 py-4 font-medium text-slate-700">{car.fuelType}</td>
+                      <td className="overflow-hidden whitespace-nowrap px-2 py-4 font-semibold text-slate-700">{formatMoney(car.dailyPrice)}</td>
+                      <td className="overflow-hidden whitespace-nowrap px-2 py-4 text-slate-600">{formatMileage(car.mileage)}</td>
+                      <td className="overflow-hidden px-2 py-4">
                         <CarAlerts car={car} />
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="overflow-hidden px-2 py-4">
                         <FleetStatusBadge status={car.status} />
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="px-3 py-4" onClick={(event) => event.stopPropagation()}>
                         <CarActions
                           car={car}
                           hasOngoingReservation={ongoingByCarId.has(car.id)}
-                          onDelete={() => void handleDelete(car.id)}
+                          onDelete={() => handleDelete(car.id)}
                           onEdit={() => {
                             setEditingCar(car);
                             setOpen(true);
@@ -459,7 +461,6 @@ export function CarsPage() {
                             setRetourMileage("");
                             setRetourFuel("Plein");
                           }}
-                          onView={() => setDetailsCar(car)}
                         />
                       </td>
                     </tr>
@@ -490,72 +491,6 @@ export function CarsPage() {
           totalPages={totalPages}
         />
       </div>
-
-      <Dialog onOpenChange={(value) => !value && setDetailsCar(null)} open={Boolean(detailsCar)}>
-        <DialogContent
-          aria-label="Historique des réservations de la voiture"
-          className="flex max-h-[92vh] w-[calc(100vw-24px)] max-w-[1100px] flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white p-0 shadow-2xl data-[state=open]:animate-[scale-in-center_200ms_ease-out] data-[state=closed]:animate-[scale-out-center_160ms_ease-in] sm:max-h-[85vh] sm:w-[min(92vw,1000px)] dark:border-slate-800 dark:bg-slate-950"
-        >
-          <DialogHeader className="sticky top-0 z-20 mb-0 border-b border-slate-200 bg-white/95 px-6 py-5 pr-20 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
-            <DialogTitle className="text-xl font-semibold tracking-normal text-slate-950 dark:text-slate-100">
-              Historique de location
-            </DialogTitle>
-            <p className="text-sm text-muted-foreground dark:text-slate-400">
-              {detailsCar
-                ? `${formatCarName(detailsCar.brand, detailsCar.model)} - ${formatRegistrationNumber(detailsCar.registrationNumber)}`
-                : "Réservations de la voiture"}
-            </p>
-          </DialogHeader>
-          <div className="modal-scrollbar flex-1 space-y-6 overflow-y-auto p-6" aria-label="Liste des réservations" tabIndex={0}>
-            {detailsHistory.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center dark:border-slate-700 dark:bg-slate-900">
-                <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Aucune location pour cette voiture.</p>
-                <p className="mt-1 text-sm text-muted-foreground dark:text-slate-400">
-                  Les réservations apparaîtront ici dès qu'elles seront créées.
-                </p>
-              </div>
-            ) : (
-              <div className="grid gap-4">
-                {detailsHistory.map((reservation) => (
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-500/50" key={reservation.id}>
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0 space-y-3">
-                        <div>
-                          <h3 className="font-semibold text-slate-950 dark:text-slate-100">Réservation #{reservation.id}</h3>
-                          <p className="mt-1 text-sm text-muted-foreground dark:text-slate-400">
-                            {formatShortPeriod(reservation.startDate, reservation.endDate)}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap gap-3">
-                          <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                            <CalendarDays className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                            {formatShortPeriod(reservation.startDate, reservation.endDate)}
-                          </span>
-                          <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 font-semibold text-slate-900 dark:bg-slate-800 dark:text-slate-100">
-                            <CircleDollarSign className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                            {formatMoney(reservation.totalPrice)}
-                          </span>
-                        </div>
-                      </div>
-                      <HistoryStatusBadge status={reservation.status} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="sticky bottom-0 z-20 flex items-center justify-between gap-4 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
-            <p className="text-sm text-muted-foreground dark:text-slate-400">
-              {detailsHistory.length} réservation{detailsHistory.length > 1 ? "s" : ""}
-            </p>
-            <DialogClose asChild>
-              <Button className="min-w-28 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" type="button" variant="outline">
-                Fermer
-              </Button>
-            </DialogClose>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog onOpenChange={(value) => !value && setRetourCar(null)} open={Boolean(retourCar)}>
         <DialogContent>
@@ -591,7 +526,19 @@ export function CarsPage() {
                 <Button onClick={() => setRetourCar(null)} type="button" variant="outline">
                   Annuler
                 </Button>
-                <Button className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => void handleRetour()} type="button">
+                <Button
+                  className="bg-emerald-600 text-white hover:bg-emerald-700"
+                  onClick={() =>
+                    confirmAction({
+                      action: "retour",
+                      confirmLabel: "Confirmer retour",
+                      description: "Cette action terminera la location avec les informations de retour saisies.",
+                      title: "Enregistrer le retour ?",
+                      onConfirm: handleRetour,
+                    })
+                  }
+                  type="button"
+                >
                   <CheckCircle2 className="h-4 w-4" />
                   Confirmer retour
                 </Button>
@@ -637,7 +584,7 @@ function carToForm(car: Car): CreateCarDto {
 
 function CarIdentity({ car }: { car: Car }) {
   return (
-    <div className="flex min-w-0 items-center gap-3">
+    <div className="flex min-w-0 items-center gap-2 lg:gap-3">
       <CarThumbnail car={car} />
       <div className="min-w-0">
         <p className="truncate font-semibold text-slate-800">{formatCarName(car.brand, car.model)}</p>
@@ -652,15 +599,15 @@ function CarThumbnail({ car }: { car: Car }) {
     return (
       <img
         alt={formatCarName(car.brand, car.model)}
-        className="h-10 w-14 rounded-md object-cover"
+        className="h-9 w-12 shrink-0 rounded-md object-cover lg:h-10 lg:w-14"
         src={car.imageUrl}
       />
     );
   }
 
   return (
-    <span className="flex h-10 w-14 items-center justify-center rounded-md bg-slate-100 text-slate-500 ring-1 ring-slate-200">
-      <CarIcon className="h-6 w-6" />
+    <span className="flex h-9 w-12 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-500 ring-1 ring-slate-200 lg:h-10 lg:w-14">
+      <CarIcon className="h-5 w-5 lg:h-6 lg:w-6" />
     </span>
   );
 }
@@ -671,27 +618,25 @@ function CarActions({
   onDelete,
   onEdit,
   onRetour,
-  onView,
 }: {
   car: Car;
   hasOngoingReservation: boolean;
   onDelete: () => void;
   onEdit: () => void;
   onRetour: () => void;
-  onView: () => void;
 }) {
   return (
-    <div className="flex items-center justify-end gap-2">
-      <ActionIconButton asChild color="blue" icon={Eye} label="Voir détails">
-        <Link to={`/cars/${car.id}`}>
-          <Eye className="h-4 w-4" />
-        </Link>
-      </ActionIconButton>
-      <ActionIconButton color="amber" icon={Pencil} label="Modifier" onClick={onEdit} />
-      <ActionIconButton color="red" icon={Trash2} label="Supprimer" onClick={onDelete} />
-      {car.status === "RENTED" && hasOngoingReservation ? (
-        <ActionIconButton color="emerald" icon={CheckCircle2} label="Enregistrer le retour" onClick={onRetour} />
-      ) : null}
+    <div className="flex justify-end">
+      <DataGridActionMenu
+        actions={[
+          { href: `/cars/${car.id}`, icon: Eye, label: "Voir détails" },
+          { icon: Pencil, label: "Modifier", onClick: onEdit },
+          ...(car.status === "RENTED" && hasOngoingReservation
+            ? [{ icon: CheckCircle2, label: "Enregistrer le retour", onClick: onRetour }]
+            : []),
+          { destructive: true, icon: Trash2, label: "Supprimer", onClick: onDelete },
+        ]}
+      />
     </div>
   );
 }
@@ -705,15 +650,15 @@ function CarAlerts({ car }: { car: Car }) {
   if (!alerts.length) return <span className="text-muted-foreground">-</span>;
 
   return (
-    <div className="flex flex-wrap gap-1">
+    <div className="flex min-w-0 flex-wrap gap-1">
       {alerts.map((alert) => (
         <span
-          className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200"
+          className="inline-flex max-w-full items-center gap-1 rounded-full bg-amber-50 px-1.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200 lg:px-2"
           key={alert.label}
           title={alert.title}
         >
-          <AlertTriangle className="h-3 w-3" />
-          {alert.label}
+          <AlertTriangle className="h-3 w-3 shrink-0" />
+          <span className="truncate">{alert.label}</span>
         </span>
       ))}
     </div>
@@ -736,34 +681,9 @@ function FleetStatusBadge({ status }: { status: CarStatus }) {
   };
 
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${styles[status]}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${dotStyles[status]}`} />
-      {getStatusLabel(status)}
-    </span>
-  );
-}
-
-function HistoryStatusBadge({ status }: { status: Reservation["status"] }) {
-  const styles: Record<Reservation["status"], string> = {
-    CANCELLED: "bg-red-50 text-red-700 ring-red-200 dark:bg-red-950/40 dark:text-red-200 dark:ring-red-900",
-    COMPLETED: "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:ring-emerald-900",
-    EN_ATTENTE: "bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:ring-blue-900",
-    ONGOING: "bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:ring-blue-900",
-    RESERVED: "bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:ring-blue-900",
-  };
-
-  const dotStyles: Record<Reservation["status"], string> = {
-    CANCELLED: "bg-red-500",
-    COMPLETED: "bg-emerald-500",
-    EN_ATTENTE: "bg-blue-500",
-    ONGOING: "bg-blue-500",
-    RESERVED: "bg-blue-500",
-  };
-
-  return (
-    <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ring-1 ${styles[status]}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${dotStyles[status]}`} />
-      {getStatusLabel(status)}
+    <span className={`inline-flex max-w-full items-center gap-1.5 rounded-full px-2 py-1 text-xs font-semibold ring-1 ${styles[status]}`}>
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotStyles[status]}`} />
+      <span className="truncate">{getStatusLabel(status)}</span>
     </span>
   );
 }
@@ -854,10 +774,10 @@ function getErrorMessage(caught: unknown) {
 function RegistrationNumber({ value }: { value: string }) {
   const normalized = normalizeRegistrationNumber(value);
 
-  if (isValidRegistrationNumber(normalized)) return <span>{formatRegistrationNumber(normalized)}</span>;
+  if (isValidRegistrationNumber(normalized)) return <span className="block truncate">{formatRegistrationNumber(normalized)}</span>;
 
   return (
-    <span className="font-medium text-destructive" title={`Valeur actuelle : ${value}`}>
+    <span className="block truncate font-medium text-destructive" title={`Valeur actuelle : ${value}`}>
       Format invalide
     </span>
   );

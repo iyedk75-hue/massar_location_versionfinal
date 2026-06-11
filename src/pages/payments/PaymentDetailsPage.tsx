@@ -144,7 +144,7 @@ export function PaymentDetailsPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
+    <div className="flex w-full flex-col gap-5">
       <Breadcrumb />
 
       <PaymentSummaryCard data={data} />
@@ -161,7 +161,7 @@ export function PaymentDetailsPage() {
 
 function DesktopStateCard({ description, title }: { description: string; title: string }) {
   return (
-    <div className="mx-auto flex h-full min-h-[420px] w-full max-w-7xl items-center justify-center">
+    <div className="flex h-full min-h-[420px] w-full items-center justify-center">
       <div className="rounded-lg border border-border bg-white px-6 py-5 text-center shadow-sm">
         <h2 className="text-base font-semibold">{title}</h2>
         <p className="mt-2 text-sm text-muted-foreground">{description}</p>
@@ -509,37 +509,45 @@ export function TransactionsTable({ transactions }: { transactions: Transaction[
         </div>
       </div>
 
-      <div className="mt-5 overflow-x-auto">
-        <table className="w-full min-w-[760px] border-separate border-spacing-0 text-left text-sm">
+      <div className="mt-5 w-full overflow-x-auto md:overflow-x-visible">
+        <table className="w-full min-w-[680px] table-fixed border-separate border-spacing-0 text-left text-sm md:min-w-0">
           <thead>
             <tr className="bg-slate-50 text-xs uppercase text-muted-foreground">
-              <TableHead>Date</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead>Montant</TableHead>
-              <TableHead>Méthode</TableHead>
-              <TableHead className="text-right">Reçu</TableHead>
+              <TableHead className="w-[132px] lg:w-[156px]">Date</TableHead>
+              <TableHead className="w-[112px] lg:w-[128px]">Type</TableHead>
+              <TableHead className="min-w-0">Description</TableHead>
+              <TableHead className="w-[104px] lg:w-[122px]">Montant</TableHead>
+              <TableHead className="w-[92px] lg:w-[112px]">Méthode</TableHead>
+              <TableHead className="w-[58px] text-right lg:w-[66px]">Reçu</TableHead>
             </tr>
           </thead>
           <tbody>
             {paginatedTransactions.map((transaction) => (
               <tr className="border-b border-border last:border-b-0" key={transaction.id}>
-                <TableCell>{formatDateTime(transaction.date)}</TableCell>
-                <TableCell>
+                <TableCell className="overflow-hidden whitespace-nowrap">
+                  <span className="block truncate">{formatDateTime(transaction.date)}</span>
+                </TableCell>
+                <TableCell className="overflow-hidden">
                   <span
                     className={cn(
-                      "inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1",
+                      "inline-flex max-w-full rounded-full px-2 py-1 text-xs font-semibold ring-1",
                       transaction.type === "Caution" || transaction.type === "Remboursement"
                         ? "bg-amber-50 text-amber-700 ring-amber-200"
                         : "bg-blue-50 text-primary ring-blue-200",
                     )}
                   >
-                    {transaction.type}
+                    <span className="truncate">{transaction.type}</span>
                   </span>
                 </TableCell>
-                <TableCell>{transaction.description}</TableCell>
-                <TableCell className="font-semibold">{formatMoney(transaction.amount)}</TableCell>
-                <TableCell>{transaction.method}</TableCell>
+                <TableCell className="min-w-0 overflow-hidden">
+                  <span className="block truncate">{transaction.description}</span>
+                </TableCell>
+                <TableCell className="overflow-hidden whitespace-nowrap font-semibold">
+                  <span className="block truncate">{formatMoney(transaction.amount)}</span>
+                </TableCell>
+                <TableCell className="overflow-hidden whitespace-nowrap">
+                  <span className="block truncate">{transaction.method}</span>
+                </TableCell>
                 <TableCell className="text-right">
                   <button
                     aria-label={`Reçu ${transaction.id}`}
@@ -675,11 +683,11 @@ function DepositTooltip() {
 }
 
 function TableHead({ children, className }: { children: ReactNode; className?: string }) {
-  return <th className={cn("border-b border-border px-4 py-3 font-semibold first:rounded-l-md last:rounded-r-md", className)}>{children}</th>;
+  return <th className={cn("border-b border-border px-2 py-3 font-semibold first:rounded-l-md last:rounded-r-md", className)}>{children}</th>;
 }
 
 function TableCell({ children, className }: { children: ReactNode; className?: string }) {
-  return <td className={cn("border-b border-border px-4 py-4 align-middle last:border-b", className)}>{children}</td>;
+  return <td className={cn("border-b border-border px-2 py-4 align-middle last:border-b", className)}>{children}</td>;
 }
 
 function formatReservationPeriod(reservation: PaymentDetailData["reservation"]) {

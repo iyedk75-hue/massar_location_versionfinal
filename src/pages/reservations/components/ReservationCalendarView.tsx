@@ -322,7 +322,7 @@ function StatusLegend() {
       <LegendItem color="bg-orange-500" label="À venir" />
       <LegendItem color="bg-blue-500" label="En cours" />
       <LegendItem color="bg-emerald-500" label="Confirmée" />
-      <LegendItem color="bg-slate-400" label="Terminée" />
+      <LegendItem color="bg-emerald-500" label="Terminée" />
       <LegendItem color="bg-red-500" label="Annulée" />
     </div>
   );
@@ -426,8 +426,11 @@ function getMonthEventLane(lanes: Array<Array<{ end: number; start: number }>>, 
 }
 
 function formatEventDateSpan(reservation: Reservation) {
-  const formatter = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit" });
-  return `${formatter.format(new Date(reservation.startDate))}-${formatter.format(new Date(reservation.endDate))}`;
+  const dateFormatter = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit" });
+  const timeFormatter = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  const start = new Date(reservation.startDate);
+  const end = new Date(reservation.endDate);
+  return `${dateFormatter.format(start)} ${timeFormatter.format(start)} - ${dateFormatter.format(end)} ${timeFormatter.format(end)}`;
 }
 
 function formatTimeRange(reservation: Reservation) {
@@ -452,7 +455,7 @@ function formatCalendarReservationTitle(
 function getStatusBarClass(status: Reservation["status"]) {
   return {
     CANCELLED: "bg-red-500",
-    COMPLETED: "bg-slate-400",
+    COMPLETED: "bg-emerald-500",
     EN_ATTENTE: "bg-orange-500",
     ONGOING: "bg-blue-500",
     RESERVED: "bg-emerald-500",

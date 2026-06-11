@@ -34,7 +34,7 @@ import type { Client } from "@/types/client";
 import type { Contract, ContractStatus } from "@/types/contract";
 import type { Reservation } from "@/types/reservation";
 import { formatCarName, formatRegistrationNumber } from "@/utils/car";
-import { normalizeClientName } from "@/utils/client";
+import { formatClientIdentity, normalizeClientName } from "@/utils/client";
 import { getRentalDays } from "@/utils/date";
 import { createContractPdf } from "@/utils/pdf";
 import { useToast } from "@/hooks/useToast";
@@ -149,6 +149,9 @@ function searchMatch(row: ContractRow, query: string) {
   return (
     row.contract.contractNumber.toLowerCase().includes(q) ||
     (row.client ? normalizeClientName(row.client.fullName).toLowerCase().includes(q) : false) ||
+    (row.client ? formatClientIdentity(row.client).toLowerCase().includes(q) : false) ||
+    (row.secondClient ? normalizeClientName(row.secondClient.fullName).toLowerCase().includes(q) : false) ||
+    (row.secondClient ? formatClientIdentity(row.secondClient).toLowerCase().includes(q) : false) ||
     (row.car ? `${row.car.brand} ${row.car.model}`.toLowerCase().includes(q) : false) ||
     (row.car ? row.car.registrationNumber.toLowerCase().includes(q) : false)
   );

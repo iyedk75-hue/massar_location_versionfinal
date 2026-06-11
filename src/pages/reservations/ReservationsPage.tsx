@@ -298,8 +298,19 @@ export function ReservationsPage() {
       )}
 
       <ReservationQuickDetails
+        hasActiveRentalForCar={
+          selectedItem
+            ? reservations.some(
+                (reservation) =>
+                  reservation.id !== selectedItem.reservation.id &&
+                  reservation.carId === selectedItem.reservation.carId &&
+                  reservation.status === "ONGOING",
+              )
+            : false
+        }
         item={selectedItem}
         onClose={() => setSelectedReservationId(null)}
+        onDelete={handleDeleteReservation}
         onEdit={beginEdit}
         onGenerateContract={handleGenerateContract}
         onStatusChange={handleStatus}

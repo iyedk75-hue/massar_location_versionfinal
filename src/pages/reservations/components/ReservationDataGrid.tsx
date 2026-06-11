@@ -94,7 +94,20 @@ export function ReservationDataGrid({ items, onArchive, onArchiveSelected, onCre
       return;
     }
 
-    await Promise.all(selectedReservationIds.map((id) => onStatusChange(id, status)));
+    const ids = getBulkStatusIds(items, selectedReservationIds, status);
+    if (!ids.length && status === "ONGOING") {
+      showToast({ message: "La voiture a deja une location en cours.", title: "Action impossible", type: "info" });
+      setBulkActionsOpen(false);
+      return;
+    }
+
+    if (!ids.length) {
+      showToast({ message: "Seules les réservations à venir peuvent être annulées.", title: "Action impossible", type: "info" });
+      setBulkActionsOpen(false);
+      return;
+    }
+
+    await Promise.all(ids.map((id) => onStatusChange(id, status)));
     setSelectedReservationIds([]);
     setBulkActionsOpen(false);
   }
@@ -188,6 +201,7 @@ export function ReservationDataGrid({ items, onArchive, onArchiveSelected, onCre
             {pageItems.length ? (
               pageItems.map((item) => (
                 <ReservationRow
+                  hasActiveRentalForCar={hasActiveRentalForCar(items, item.reservation)}
                   item={item}
                   key={item.reservation.id}
                   onArchive={onArchive}
@@ -244,6 +258,7 @@ export function ReservationDataGrid({ items, onArchive, onArchiveSelected, onCre
 }
 
 function ReservationRow({
+  hasActiveRentalForCar,
   item,
   onArchive,
   onEdit,
@@ -252,6 +267,7 @@ function ReservationRow({
   onToggleSelection,
   selected,
 }: {
+  hasActiveRentalForCar: boolean;
   item: ReservationViewModel;
   onArchive: (reservation: Reservation) => void;
   onEdit: (reservation: Reservation) => void;
@@ -343,14 +359,16 @@ function ReservationRow({
       <td className="px-5 py-5">
         <div className="flex justify-end gap-2" onClick={(event) => event.stopPropagation()}>
           <ActionIconButton color="blue" icon={Eye} label="Voir détails" onClick={() => onSelect(reservation)} />
-          <ActionIconButton color="amber" icon={Pencil} label="Modifier" onClick={() => onEdit(reservation)} />
+          {reservation.status !== "COMPLETED" && reservation.status !== "CANCELLED" && (
+            <ActionIconButton color="amber" icon={Pencil} label="Modifier" onClick={() => onEdit(reservation)} />
+          )}
           {(reservation.status === "EN_ATTENTE" || reservation.status === "RESERVED") && (
             <ActionIconButton color="emerald" icon={Play} label="Démarrer" onClick={() => void onStatusChange(reservation.id, "ONGOING")} />
           )}
           {reservation.status === "ONGOING" && (
             <ActionIconButton color="emerald" icon={CheckCircle2} label="Terminer" onClick={() => void onStatusChange(reservation.id, "COMPLETED")} />
           )}
-          {reservation.status !== "CANCELLED" && reservation.status !== "COMPLETED" && (
+          {(reservation.status === "EN_ATTENTE" || reservation.status === "RESERVED") && !hasActiveRentalForCar && (
             <ActionIconButton color="red" icon={Ban} label="Annuler" onClick={() => void onStatusChange(reservation.id, "CANCELLED")} />
           )}
           <ActionIconButton color="violet" icon={Archive} label="Archiver" onClick={() => onArchive(reservation)} />
@@ -358,6 +376,42 @@ function ReservationRow({
       </td>
     </tr>
   );
+}
+
+function hasActiveRentalForCar(items: ReservationViewModel[], reservation: Reservation) {
+  return items.some(
+    (item) =>
+      item.reservation.id !== reservation.id &&
+      item.reservation.carId === reservation.carId &&
+      item.reservation.status === "ONGOING",
+  );
+}
+
+function getBulkStatusIds(items: ReservationViewModel[], selectedIds: number[], status: Reservation["status"]) {
+  if (status === "CANCELLED") {
+    return items
+      .filter(
+        (item) =>
+          selectedIds.includes(item.reservation.id) &&
+          (item.reservation.status === "EN_ATTENTE" || item.reservation.status === "RESERVED"),
+      )
+      .map((item) => item.reservation.id);
+  }
+
+  if (status !== "ONGOING") return selectedIds;
+
+  const startedCarIds = new Set<number>();
+  return items
+    .filter((item) => {
+      const reservation = item.reservation;
+      if (!selectedIds.includes(reservation.id)) return false;
+      if (reservation.status !== "EN_ATTENTE" && reservation.status !== "RESERVED") return false;
+      if (hasActiveRentalForCar(items, reservation)) return false;
+      if (startedCarIds.has(reservation.carId)) return false;
+      startedCarIds.add(reservation.carId);
+      return true;
+    })
+    .map((item) => item.reservation.id);
 }
 
 function CarThumb({ car }: { car?: ReservationViewModel["car"] }) {

@@ -89,10 +89,6 @@ function invokeFallback<T>(command: string, args?: Record<string, unknown>): T {
     return buildFallbackAuthState() as T;
   }
 
-  if (isProtectedCommand(command) && !readAuthSession()) {
-    throw new Error("Authentification requise.");
-  }
-
   ensureFallbackDemoData();
 
   if (command === "save_database_copy" || command === "mount_existing_database") {
@@ -150,9 +146,6 @@ function invokeFallback<T>(command: string, args?: Record<string, unknown>): T {
     };
     const current = readCollection(collection);
     writeCollection(collection, [...current, item]);
-    if (command === "create_reservation") {
-      createFallbackContract((item as { id: number }).id);
-    }
     return item as T;
   }
 
@@ -201,6 +194,22 @@ function invokeFallback<T>(command: string, args?: Record<string, unknown>): T {
     const data = args?.data as { status: string; returnMileage?: number; returnFuelLevel?: string };
     const reservations = readCollection<Record<string, unknown>>("reservations");
     const target = reservations.find((reservation) => reservation.id === id);
+    if (data.status === "CANCELLED" && target && target.status !== "EN_ATTENTE" && target.status !== "RESERVED") {
+      throw new Error("Seules les réservations à venir peuvent être annulées.");
+    }
+    if (
+      data.status === "ONGOING" &&
+      target &&
+      reservations.some(
+        (reservation) =>
+          reservation.archived !== true &&
+          Number(reservation.id) !== id &&
+          Number(reservation.carId) === Number(target.carId) &&
+          reservation.status === "ONGOING",
+      )
+    ) {
+      throw new Error("Cette voiture a deja une location en cours. Terminez-la avant de demarrer une autre reservation.");
+    }
     const updatedReservations = reservations.map((reservation) =>
       reservation.id === id ? { ...reservation, ...data, updatedAt: new Date().toISOString() } : reservation,
     );
@@ -210,6 +219,9 @@ function invokeFallback<T>(command: string, args?: Record<string, unknown>): T {
       const carStatus = data.status === "ONGOING" ? "RENTED" : ["COMPLETED", "CANCELLED"].includes(data.status) ? "AVAILABLE" : null;
       if (carStatus) {
         invokeFallback("change_car_status", { id: target.carId, status: carStatus });
+      }
+      if (data.status === "ONGOING") {
+        createFallbackContract(id);
       }
     }
 
@@ -270,7 +282,7 @@ function invokeFallback<T>(command: string, args?: Record<string, unknown>): T {
     const reservations = readCollection<Record<string, unknown>>("reservations");
     const target = reservations.find((reservation) => reservation.id === id);
     if (!target) throw new Error("Réservation introuvable.");
-    if (target.status === "ONGOING") {
+    if (target.status === "ONGOING" || target.status === "COMPLETED" || target.status === "CANCELLED") {
       throw new Error("Une location en cours doit être clôturée avant modification.");
     }
     validateFallbackReservation(data, id);
@@ -458,11 +470,14 @@ function storageKey(collection: CollectionCommand) {
 }
 
 function buildFallbackAuthState() {
-  const session = readAuthSession();
   return {
-    authenticated: Boolean(session),
+    authenticated: true,
     requiresSetup: false,
-    user: session,
+    user: {
+      fullName: "Acces libre",
+      id: 0,
+      username: "guest",
+    },
   };
 }
 

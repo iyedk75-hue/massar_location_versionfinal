@@ -25,6 +25,13 @@ export function formatPhoneNumber(value?: string | null) {
   return formatLocalPhoneNumber(digits);
 }
 
+export function formatClientIdentity(client?: { cin?: string | null; passportNumber?: string | null } | null) {
+  if (!client) return "CIN: -";
+  if (client.cin) return `CIN: ${client.cin}`;
+  if (client.passportNumber) return `Passeport: ${client.passportNumber}`;
+  return "CIN: -";
+}
+
 export function splitPhoneNumber(value?: string | null) {
   const raw = (value ?? "").trim();
   const digits = raw.replace(/\D/g, "");

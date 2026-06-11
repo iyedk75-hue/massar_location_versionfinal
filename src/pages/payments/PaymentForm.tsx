@@ -9,7 +9,7 @@ import type { Client } from "@/types/client";
 import type { CreatePaymentDto, Payment, PaymentType } from "@/types/payment";
 import type { Reservation } from "@/types/reservation";
 import { formatCarName, formatRegistrationNumber } from "@/utils/car";
-import { normalizeClientName } from "@/utils/client";
+import { formatClientIdentity, normalizeClientName } from "@/utils/client";
 import { formatShortPeriod } from "@/utils/date";
 import { formatMoney } from "@/utils/money";
 
@@ -86,7 +86,7 @@ export function PaymentForm({
   const reservationId = Number(watch("reservationId"));
   const paymentType = watch("type");
 
-  const clientsById = useMemo(() => new Map(clients.map((client) => [client.id, normalizeClientName(client.fullName)])), [clients]);
+  const clientsById = useMemo(() => new Map(clients.map((client) => [client.id, client])), [clients]);
   const carsById = useMemo(
     () => new Map(cars.map((car) => [car.id, `${formatCarName(car.brand, car.model)} - ${formatRegistrationNumber(car.registrationNumber)}`])),
     [cars],
@@ -100,7 +100,7 @@ export function PaymentForm({
     () => [
       { value: 0, label: "Sélectionner" },
       ...reservations.map((reservation) => ({
-        keywords: `${reservation.id} ${reservation.clientId} ${reservation.secondClientId ?? ""} ${reservation.carId}`,
+        keywords: getReservationSearchKeywords(reservation, clientsById),
         label: getReservationLabel(reservation, clientsById, carsById),
         value: reservation.id,
       })),
@@ -451,13 +451,34 @@ function getNextAvailablePaymentType(summary: PaymentSummary): PaymentType {
 
 function getReservationLabel(
   reservation: Reservation,
-  clientsById: Map<number, string>,
+  clientsById: Map<number, Client>,
   carsById: Map<number, string>,
 ) {
-  const client = clientsById.get(reservation.clientId) ?? `Client #${reservation.clientId}`;
+  const client = clientsById.get(reservation.clientId);
   const secondClient = reservation.secondClientId ? clientsById.get(reservation.secondClientId) : undefined;
   const car = carsById.get(reservation.carId) ?? `Voiture #${reservation.carId}`;
-  return `${client}${secondClient ? ` / 2e conducteur: ${secondClient}` : ""} - ${car} - ${formatShortPeriod(reservation.startDate, reservation.endDate)}`;
+  const clientLabel = client ? `${normalizeClientName(client.fullName)} (${formatClientIdentity(client)})` : `Client #${reservation.clientId}`;
+  const secondClientLabel = secondClient
+    ? ` / 2e conducteur: ${normalizeClientName(secondClient.fullName)} (${formatClientIdentity(secondClient)})`
+    : "";
+  return `${clientLabel}${secondClientLabel} - ${car} - ${formatShortPeriod(reservation.startDate, reservation.endDate)}`;
+}
+
+function getReservationSearchKeywords(reservation: Reservation, clientsById: Map<number, Client>) {
+  const client = clientsById.get(reservation.clientId);
+  const secondClient = reservation.secondClientId ? clientsById.get(reservation.secondClientId) : undefined;
+  return [
+    reservation.id,
+    reservation.clientId,
+    reservation.secondClientId ?? "",
+    reservation.carId,
+    client?.fullName ?? "",
+    client?.cin ?? "",
+    client?.passportNumber ?? "",
+    secondClient?.fullName ?? "",
+    secondClient?.cin ?? "",
+    secondClient?.passportNumber ?? "",
+  ].join(" ");
 }
 
 function SummaryItem({ label, value }: { label: string; value: number }) {

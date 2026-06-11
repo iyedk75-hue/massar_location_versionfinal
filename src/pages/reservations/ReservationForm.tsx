@@ -8,7 +8,7 @@ import type { Car } from "@/types/car";
 import type { Client } from "@/types/client";
 import type { CreateReservationDto, Reservation } from "@/types/reservation";
 import { formatCarName, formatRegistrationNumber } from "@/utils/car";
-import { normalizeClientName } from "@/utils/client";
+import { formatClientIdentity, normalizeClientName } from "@/utils/client";
 import { combineDateAndTime, formatDateTime, formatRentalDuration, getLocalDateKey, getRentalDays } from "@/utils/date";
 import { formatMoney } from "@/utils/money";
 
@@ -121,6 +121,7 @@ export function ReservationForm({
     () => [
       { value: 0, label: "Sélectionner" },
       ...selectableClients.map((client) => ({
+        description: formatClientIdentity(client),
         disabled: !isClientActive(client) && client.id !== defaultClientId,
         keywords: `${client.phone ?? ""} ${client.cin ?? ""} ${client.passportNumber ?? ""}`,
         label: `${normalizeClientName(client.fullName)}${!isClientActive(client) ? " (désactivé)" : ""}`,
@@ -133,6 +134,7 @@ export function ReservationForm({
     () => [
       { value: 0, label: "Aucun" },
       ...selectableClients.map((client) => ({
+        description: formatClientIdentity(client),
         disabled: client.id === clientId || (!isClientActive(client) && client.id !== defaultSecondClientId),
         keywords: `${client.phone ?? ""} ${client.cin ?? ""} ${client.passportNumber ?? ""}`,
         label: `${normalizeClientName(client.fullName)}${!isClientActive(client) ? " (désactivé)" : ""}`,

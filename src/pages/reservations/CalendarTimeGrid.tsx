@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 const statusAccent: Record<Reservation["status"], string> = {
   CANCELLED: "border-l-red-500 bg-red-50 text-red-800",
-  COMPLETED: "border-l-slate-400 bg-slate-50 text-slate-700",
+  COMPLETED: "border-l-emerald-500 bg-emerald-50 text-emerald-800",
   EN_ATTENTE: "border-l-amber-500 bg-amber-50 text-amber-800",
   ONGOING: "border-l-blue-500 bg-blue-50 text-blue-800",
   RESERVED: "border-l-emerald-500 bg-emerald-50 text-emerald-800",

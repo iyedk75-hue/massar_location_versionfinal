@@ -1,6 +1,6 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import type { ReactNode } from "react";
-import { Ban, CalendarDays, CarFront, CheckCircle2, FileText, Pencil, Phone, Play, WalletCards, X } from "lucide-react";
+import { Ban, CalendarDays, CarFront, CheckCircle2, FileText, Pencil, Phone, Play, Trash2, WalletCards, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import type { Reservation } from "@/types/reservation";
@@ -12,23 +12,29 @@ import { cn } from "@/lib/utils";
 import { getClientIdentity, type ReservationViewModel } from "@/pages/reservations/components/reservationViewUtils";
 
 interface ReservationQuickDetailsProps {
+  hasActiveRentalForCar?: boolean;
   item: ReservationViewModel | null;
   onGenerateContract: (reservationId: number) => void | Promise<void>;
   onClose: () => void;
+  onDelete: (reservation: Reservation) => void | Promise<void>;
   onEdit: (reservation: Reservation) => void;
   onStatusChange: (id: number, status: Reservation["status"]) => void | Promise<void>;
   open: boolean;
 }
 
 export function ReservationQuickDetails({
+  hasActiveRentalForCar = false,
   item,
   onClose,
+  onDelete,
   onEdit,
   onGenerateContract,
   onStatusChange,
   open,
 }: ReservationQuickDetailsProps) {
   const reservation = item?.reservation;
+  const canViewContract = reservation?.status === "ONGOING" || reservation?.status === "COMPLETED";
+  const canEdit = reservation?.status !== "COMPLETED" && reservation?.status !== "CANCELLED";
 
   return (
     <DialogPrimitive.Root onOpenChange={(value) => !value && onClose()} open={open}>
@@ -119,9 +125,13 @@ export function ReservationQuickDetails({
                   </div>
                   <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-slate-50 p-3 dark:bg-slate-900">
                     <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Contrat</span>
-                    <Button onClick={() => void onGenerateContract(reservation.id)} size="sm" type="button" variant="outline">
-                      Voir contrat
-                    </Button>
+                    {canViewContract ? (
+                      <Button onClick={() => void onGenerateContract(reservation.id)} size="sm" type="button" variant="outline">
+                        Voir contrat
+                      </Button>
+                    ) : (
+                      <span className="text-xs font-medium text-muted-foreground dark:text-slate-400">Au dÃ©marrage</span>
+                    )}
                   </div>
                 </Section>
 
@@ -133,11 +143,13 @@ export function ReservationQuickDetails({
 
               <div className="border-t border-border p-5 dark:border-slate-800">
                 <div className="flex flex-wrap justify-end gap-2">
-                  <Button onClick={() => onEdit(reservation)} type="button" variant="outline">
-                    <Pencil className="h-4 w-4" />
-                    Modifier
-                  </Button>
-                  {(reservation.status === "EN_ATTENTE" || reservation.status === "RESERVED") && (
+                  {canEdit && (
+                    <Button onClick={() => onEdit(reservation)} type="button" variant="outline">
+                      <Pencil className="h-4 w-4" />
+                      Modifier
+                    </Button>
+                  )}
+                  {(reservation.status === "EN_ATTENTE" || reservation.status === "RESERVED") && !hasActiveRentalForCar && (
                     <Button onClick={() => void onStatusChange(reservation.id, "ONGOING")} type="button">
                       <Play className="h-4 w-4" />
                       Démarrer
@@ -149,10 +161,16 @@ export function ReservationQuickDetails({
                       Terminer
                     </Button>
                   )}
-                  {reservation.status !== "COMPLETED" && reservation.status !== "CANCELLED" && (
+                  {(reservation.status === "EN_ATTENTE" || reservation.status === "RESERVED") && (
                     <Button onClick={() => void onStatusChange(reservation.id, "CANCELLED")} type="button" variant="destructive">
                       <Ban className="h-4 w-4" />
                       Annuler
+                    </Button>
+                  )}
+                  {reservation.status === "CANCELLED" && (
+                    <Button onClick={() => void onDelete(reservation)} type="button" variant="destructive">
+                      <Trash2 className="h-4 w-4" />
+                      Supprimer
                     </Button>
                   )}
                 </div>

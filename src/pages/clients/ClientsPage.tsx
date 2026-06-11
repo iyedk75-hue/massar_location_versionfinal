@@ -12,6 +12,7 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { ActionIconButton } from "@/components/ui/action-buttons/ActionIconButton";
@@ -427,7 +428,6 @@ export function ClientsPage() {
                               setOpen(true);
                             }}
                             onReactivate={handleReactivate}
-                            onView={() => setDetailsClient(client)}
                           />
                         </td>
                       </tr>
@@ -576,7 +576,7 @@ function ClientIdentity({ client, locationsCount }: { client: Client; locationsC
           </span>
           {locationsCount > 5 && <LoyaltyBadge />}
         </div>
-        <p className="mt-0.5 text-xs text-slate-500">CIN: {client.cin || client.passportNumber || "-"}</p>
+        <p className="mt-0.5 text-xs text-slate-500">{client.cin ? `CIN: ${client.cin}` : `Passport: ${client.passportNumber}`}</p>
       </div>
     </div>
   );
@@ -612,17 +612,19 @@ function ClientActions({
   onDeactivate,
   onEdit,
   onReactivate,
-  onView,
 }: {
   client: Client;
   onDeactivate: (id: number) => void;
   onEdit: () => void;
   onReactivate: (id: number) => void;
-  onView: () => void;
 }) {
   return (
     <div className="flex justify-end gap-2">
-      <ActionIconButton color="blue" icon={Eye} label="Voir détails" onClick={onView} />
+      <ActionIconButton asChild color="blue" icon={Eye} label="Voir détails">
+        <Link to={`/clients/${client.id}`}>
+          <Eye className="h-4 w-4" />
+        </Link>
+      </ActionIconButton>
       <ActionIconButton color="amber" icon={Pencil} label="Modifier" onClick={onEdit} />
       <ActionIconButton
         color={isClientActive(client) ? "red" : "emerald"}

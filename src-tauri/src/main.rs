@@ -688,12 +688,13 @@ fn verify_password(password: &str, salt_hex: &str, expected_hash: &str) -> Resul
 }
 
 fn require_authenticated(state: &tauri::State<'_, AppState>) -> Result<AuthUser, String> {
-    state
+    let user = state
         .auth_user
         .lock()
         .map_err(|error| error.to_string())?
-        .clone()
-        .ok_or_else(|| "Authentification requise.".to_string())
+        .clone();
+
+    Ok(user.unwrap_or_else(guest_auth_user))
 }
 
 fn map_car(row: &rusqlite::Row<'_>) -> rusqlite::Result<Car> {
@@ -820,20 +821,17 @@ fn generate_contract_for_reservation(
 
 #[tauri::command]
 fn get_auth_state(state: tauri::State<'_, AppState>) -> Result<AuthState, String> {
-    let connection = state.db.lock().map_err(|error| error.to_string())?;
-    let requires_setup = count_users(&connection)? == 0;
-    drop(connection);
-
     let user = state
         .auth_user
         .lock()
         .map_err(|error| error.to_string())?
-        .clone();
+        .clone()
+        .unwrap_or_else(guest_auth_user);
 
     Ok(AuthState {
-        authenticated: user.is_some(),
-        requires_setup,
-        user,
+        authenticated: true,
+        requires_setup: false,
+        user: Some(user),
     })
 }
 
@@ -926,17 +924,22 @@ fn login_user(state: tauri::State<'_, AppState>, data: LoginDto) -> Result<AuthS
 
 #[tauri::command]
 fn logout_user(state: tauri::State<'_, AppState>) -> Result<AuthState, String> {
-    let connection = state.db.lock().map_err(|error| error.to_string())?;
-    let requires_setup = count_users(&connection)? == 0;
-    drop(connection);
-
-    *state.auth_user.lock().map_err(|error| error.to_string())? = None;
+    let user = guest_auth_user();
+    *state.auth_user.lock().map_err(|error| error.to_string())? = Some(user.clone());
 
     Ok(AuthState {
-        authenticated: false,
-        requires_setup,
-        user: None,
+        authenticated: true,
+        requires_setup: false,
+        user: Some(user),
     })
+}
+
+fn guest_auth_user() -> AuthUser {
+    AuthUser {
+        id: 0,
+        full_name: "Acces libre".to_string(),
+        username: "guest".to_string(),
+    }
 }
 
 #[tauri::command]
@@ -1594,7 +1597,7 @@ fn update_reservation(
         )
         .map_err(|_| "Réservation introuvable".to_string())?;
 
-    if current_status == "ONGOING" {
+    if current_status == "ONGOING" || current_status == "COMPLETED" || current_status == "CANCELLED" {
         return Err("Une location en cours doit être clôturée avant modification.".to_string());
     }
 
@@ -1673,6 +1676,34 @@ fn update_reservation_status(
             |row| row.get(0),
         )
         .map_err(|error| error.to_string())?;
+    let current_status: String = connection
+        .query_row(
+            "SELECT status FROM Reservation WHERE id = ?1",
+            params![id],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+
+    if data.status == "CANCELLED" && current_status != "EN_ATTENTE" && current_status != "RESERVED" {
+        return Err("Seules les réservations à venir peuvent être annulées.".to_string());
+    }
+
+    if data.status == "ONGOING" {
+        let ongoing_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM Reservation
+                 WHERE carId = ?1
+                   AND id <> ?2
+                   AND status = 'ONGOING'
+                   AND (archived = 0 OR archived IS NULL)",
+                params![car_id, id],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?;
+        if ongoing_count > 0 {
+            return Err("Cette voiture a deja une location en cours. Terminez-la avant de demarrer une autre reservation.".to_string());
+        }
+    }
 
     connection
         .execute(
@@ -1692,6 +1723,7 @@ fn update_reservation_status(
                     params![car_id],
                 )
                 .map_err(|error| error.to_string())?;
+            generate_contract_for_reservation(&connection, id)?;
         }
         "COMPLETED" | "CANCELLED" => {
             connection

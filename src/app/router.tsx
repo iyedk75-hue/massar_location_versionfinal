@@ -3,7 +3,9 @@ import { App } from "@/app/App";
 import { AIForecastPage } from "@/pages/ai/AIForecastPage";
 import { ArchivePage } from "@/pages/archive/ArchivePage";
 import { CarsPage } from "@/pages/cars/CarsPage";
+import { CarDetails } from "@/pages/cars/CarDetails";
 import { ClientsPage } from "@/pages/clients/ClientsPage";
+import { ClientDetails } from "@/pages/clients/ClientDetails";
 import { ContractPreview } from "@/pages/contracts/ContractPreview";
 import { DashboardPage } from "@/pages/dashboard/DashboardPage";
 import { MouvementPage } from "@/pages/mouvement/MouvementPage";
@@ -22,7 +24,9 @@ export const router = createHashRouter([
     children: [
       { index: true, element: <DashboardPage /> },
       { path: "cars", element: <CarsPage /> },
+      { path: "cars/:carId", element: <CarDetails /> },
       { path: "clients", element: <ClientsPage /> },
+      { path: "clients/:clientId", element: <ClientDetails /> },
       { path: "reservations", element: <ReservationsPage /> },
       { path: "payments", element: <PaymentsPage /> },
       { path: "payments/detail", element: <PaymentDetailsPage /> },

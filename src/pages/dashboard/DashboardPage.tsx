@@ -559,6 +559,7 @@ function buildRevenueReport(payments: Payment[], period: RevenuePeriod, now: Dat
   const pointMap = new Map(points.map((point) => [point.key, point]));
   const { end, start } = getRevenueRange(period, now);
   const methodTotals = new Map<Payment["method"], number>();
+  const paidReservationIds = new Set<number>();
 
   for (const payment of rentalPayments) {
     const paymentDate = new Date(payment.paymentDate);
@@ -571,6 +572,7 @@ function buildRevenueReport(payments: Payment[], period: RevenuePeriod, now: Dat
     }
 
     methodTotals.set(payment.method, (methodTotals.get(payment.method) ?? 0) + payment.amount);
+    paidReservationIds.add(payment.reservationId);
   }
 
   const methodSlices = Array.from(methodTotals.entries())
@@ -588,7 +590,7 @@ function buildRevenueReport(payments: Payment[], period: RevenuePeriod, now: Dat
     subtitle: getRevenueSubtitle(period, start, end),
     title: getRevenueTitle(period),
     total: points.reduce((sum, point) => sum + point.value, 0),
-    unitCount: points.length,
+    unitCount: paidReservationIds.size,
   };
 }
 

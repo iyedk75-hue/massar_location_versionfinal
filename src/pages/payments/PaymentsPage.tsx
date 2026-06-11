@@ -32,7 +32,7 @@ import type { CreatePaymentDto, Payment, PaymentType } from "@/types/payment";
 import type { Reservation } from "@/types/reservation";
 import { cn } from "@/lib/utils";
 import { formatCarName, formatRegistrationNumber } from "@/utils/car";
-import { normalizeClientName } from "@/utils/client";
+import { formatClientIdentity, normalizeClientName } from "@/utils/client";
 import { formatShortPeriod, getLocalDateKey } from "@/utils/date";
 import { formatMoney } from "@/utils/money";
 import { useToast } from "@/hooks/useToast";
@@ -67,15 +67,14 @@ const paymentStatusFilterOptions = [
 ];
 
 export function PaymentsPage() {
-  const defaultPeriod = useMemo(() => getCurrentMonthPeriod(new Date()), []);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [cars, setCars] = useState<Car[]>([]);
   const [reservationFilter, setReservationFilter] = useState<number>(0);
   const [statusFilter, setStatusFilter] = useState<"ALL" | PaymentStatus>("ALL");
-  const [periodFrom, setPeriodFrom] = useState(defaultPeriod.from);
-  const [periodTo, setPeriodTo] = useState(defaultPeriod.to);
+  const [periodFrom, setPeriodFrom] = useState("");
+  const [periodTo, setPeriodTo] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(() => readStoredPageSize(paymentsPageSizeKey));
   const [open, setOpen] = useState(false);
@@ -152,7 +151,11 @@ export function PaymentsPage() {
     () => [
       { value: 0, label: "Toutes les réservations" },
       ...summaries.map((summary) => ({
-        keywords: `${summary.reservation.id} ${summary.client?.fullName ?? ""} ${summary.secondClient?.fullName ?? ""} ${summary.car?.registrationNumber ?? ""}`,
+        keywords: `${summary.reservation.id} ${summary.client?.fullName ?? ""} ${summary.client?.cin ?? ""} ${
+          summary.client?.passportNumber ?? ""
+        } ${summary.secondClient?.fullName ?? ""} ${summary.secondClient?.cin ?? ""} ${
+          summary.secondClient?.passportNumber ?? ""
+        } ${summary.car?.registrationNumber ?? ""}`,
         label: getReservationLabel(summary),
         value: summary.reservation.id,
       })),
@@ -187,25 +190,26 @@ export function PaymentsPage() {
   function resetFilters() {
     setReservationFilter(0);
     setStatusFilter("ALL");
-    setPeriodFrom(defaultPeriod.from);
-    setPeriodTo(defaultPeriod.to);
+    setPeriodFrom("");
+    setPeriodTo("");
     setCurrentPage(1);
   }
 
   const totals = useMemo(() => {
-    const totalDue = reservations.reduce((sum, reservation) => sum + reservation.totalPrice, 0);
-    const totalPaid = payments
-      .filter((payment) => payment.type === "RENTAL_PAYMENT")
-      .reduce((sum, payment) => sum + payment.amount, 0);
+    const payableSummaries = filteredSummaries.filter((summary) => summary.reservation.status !== "CANCELLED");
+    const totalDue = payableSummaries.reduce((sum, summary) => sum + summary.reservation.totalPrice, 0);
+    const totalPaid = payableSummaries.reduce((sum, summary) => sum + summary.paid, 0);
+    const depositPaid = filteredSummaries.reduce((sum, summary) => sum + summary.depositPaid, 0);
+    const depositRefunded = filteredSummaries.reduce((sum, summary) => sum + summary.depositRefunded, 0);
 
     return {
-      depositPaid: payments.filter((payment) => payment.type === "DEPOSIT").reduce((sum, payment) => sum + payment.amount, 0),
-      depositRefunded: payments.filter((payment) => payment.type === "DEPOSIT_REFUND").reduce((sum, payment) => sum + payment.amount, 0),
+      depositPaid: Math.max(0, depositPaid - depositRefunded),
+      depositRefunded,
       remaining: Math.max(0, totalDue - totalPaid),
       totalDue,
       totalPaid,
     };
-  }, [payments, reservations]);
+  }, [filteredSummaries]);
 
   async function handleCreate(data: CreatePaymentDto) {
     try {
@@ -389,7 +393,7 @@ function StatsGrid({
         icon={CalendarDays}
         label="Total à payer"
         tone="blue"
-        value={formatMoney(totals.totalDue)}
+        value={formatMoney(totals.remaining)}
       />
       <StatCard
         description="Somme des paiements reçus"
@@ -680,16 +684,13 @@ function getRefundableDeposit(depositAmount: number, depositPaid: number) {
 }
 
 function getReservationLabel(summary: ReservationSummary) {
-  const secondClient = summary.secondClient ? ` / 2e conducteur: ${normalizeClientName(summary.secondClient.fullName)}` : "";
-  return `${summary.client ? normalizeClientName(summary.client.fullName) : "Client inconnu"}${secondClient} - ${formatSummaryCar(
+  const client = summary.client ? `${normalizeClientName(summary.client.fullName)} (${formatClientIdentity(summary.client)})` : "Client inconnu";
+  const secondClient = summary.secondClient
+    ? ` / 2e conducteur: ${normalizeClientName(summary.secondClient.fullName)} (${formatClientIdentity(summary.secondClient)})`
+    : "";
+  return `${client}${secondClient} - ${formatSummaryCar(
     summary.car,
   )} - ${formatShortPeriod(summary.reservation.startDate, summary.reservation.endDate)}`;
-}
-
-function getCurrentMonthPeriod(date: Date) {
-  const from = getLocalDateKey(new Date(date.getFullYear(), date.getMonth(), 1));
-  const to = getLocalDateKey(new Date(date.getFullYear(), date.getMonth() + 1, 0));
-  return { from, to };
 }
 
 function reservationOverlapsPeriod(reservation: Reservation, periodFrom: string, periodTo: string) {

@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 export type SearchableSelectOption = {
   value: string | number;
   label: string;
+  description?: string;
   disabled?: boolean;
   keywords?: string;
 };
@@ -46,7 +47,7 @@ export function SearchableSelect({
     if (!needle) return options;
 
     return options.filter((option) => {
-      const haystack = normalizeSearch(`${option.label} ${option.value} ${option.keywords ?? ""}`);
+      const haystack = normalizeSearch(`${option.label} ${option.description ?? ""} ${option.value} ${option.keywords ?? ""}`);
       return haystack.includes(needle);
     });
   }, [options, query]);
@@ -134,8 +135,11 @@ export function SearchableSelect({
         onClick={() => setOpen((current) => !current)}
         type="button"
       >
-        <span className={cn("min-w-0 truncate", !selectedOption && "text-muted-foreground")}>
-          {selectedOption?.label ?? placeholder}
+        <span className={cn("flex min-w-0 items-center gap-2 truncate", !selectedOption && "text-muted-foreground")}>
+          <span className="min-w-0 truncate">{selectedOption?.label ?? placeholder}</span>
+          {selectedOption?.description && (
+            <span className="shrink-0 text-xs font-normal text-muted-foreground">{selectedOption.description}</span>
+          )}
         </span>
         <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition", open && "rotate-180")} />
       </button>
@@ -184,7 +188,14 @@ export function SearchableSelect({
                     role="option"
                     type="button"
                   >
-                    <span className="min-w-0 truncate">{option.label}</span>
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="min-w-0 truncate">{option.label}</span>
+                      {option.description && (
+                        <span className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400">
+                          {option.description}
+                        </span>
+                      )}
+                    </span>
                     {selected && <Check className="h-4 w-4 shrink-0" />}
                   </button>
                 );

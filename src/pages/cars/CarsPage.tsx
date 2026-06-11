@@ -15,6 +15,7 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { getStatusLabel, StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { ActionIconButton } from "@/components/ui/action-buttons/ActionIconButton";
@@ -681,7 +682,11 @@ function CarActions({
 }) {
   return (
     <div className="flex items-center justify-end gap-2">
-      <ActionIconButton color="blue" icon={Eye} label="Voir détails" onClick={onView} />
+      <ActionIconButton asChild color="blue" icon={Eye} label="Voir détails">
+        <Link to={`/cars/${car.id}`}>
+          <Eye className="h-4 w-4" />
+        </Link>
+      </ActionIconButton>
       <ActionIconButton color="amber" icon={Pencil} label="Modifier" onClick={onEdit} />
       <ActionIconButton color="red" icon={Trash2} label="Supprimer" onClick={onDelete} />
       {car.status === "RENTED" && hasOngoingReservation ? (

@@ -117,9 +117,9 @@ export function DepositAnalyticsDialog({
     if (!value) return rows;
 
     return rows.filter((row) => {
-      const haystack = `${normalizeClientName(row.client?.fullName ?? "")} ${row.client?.cin ?? ""} ${row.reservationCode} ${
-        row.car ? formatCarName(row.car.brand, row.car.model) : ""
-      }`.toLowerCase();
+      const haystack = `${normalizeClientName(row.client?.fullName ?? "")} ${row.client?.cin ?? ""} ${
+        row.client?.passportNumber ?? ""
+      } ${row.reservationCode} ${row.car ? formatCarName(row.car.brand, row.car.model) : ""}`.toLowerCase();
       return haystack.includes(value);
     });
   }, [query, rows]);

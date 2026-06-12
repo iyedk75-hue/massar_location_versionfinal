@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DataGridActionMenu } from "@/components/ui/action-menu/DataGridActionMenu";
 import { AppPagination } from "@/components/ui/pagination/AppPagination";
+import { ReservationReturnDialog } from "@/pages/reservations/components/ReservationReturnDialog";
 import type { Reservation } from "@/types/reservation";
 import { formatCarName, formatRegistrationNumber } from "@/utils/car";
 import { normalizeClientName } from "@/utils/client";
@@ -37,7 +38,11 @@ interface ReservationDataGridProps {
   onCreate: () => void;
   onEdit: (reservation: Reservation) => void;
   onSelect: (reservation: Reservation) => void;
-  onStatusChange: (id: number, status: Reservation["status"]) => void | Promise<void>;
+  onStatusChange: (
+    id: number,
+    status: Reservation["status"],
+    details?: { returnMileage?: number | null; returnFuelLevel?: string | null },
+  ) => void | Promise<void>;
 }
 
 const reservationsPageSizeKey = "massar-pagination-page-size-reservations";
@@ -285,11 +290,18 @@ function ReservationRow({
   onArchive: (reservation: Reservation) => void;
   onEdit: (reservation: Reservation) => void;
   onSelect: (reservation: Reservation) => void;
-  onStatusChange: (id: number, status: Reservation["status"]) => void | Promise<void>;
+  onStatusChange: (
+    id: number,
+    status: Reservation["status"],
+    details?: { returnMileage?: number | null; returnFuelLevel?: string | null },
+  ) => void | Promise<void>;
   onToggleSelection: (id: number) => void;
   selected: boolean;
 }) {
   const { car, client, durationDays, reservation } = item;
+  const [returnDialogOpen, setReturnDialogOpen] = useState(false);
+  const [returnMileage, setReturnMileage] = useState("");
+  const [returnFuel, setReturnFuel] = useState("Plein");
   const { confirmAction } = useConfirmAction();
 
   function confirmStatusChange(status: Reservation["status"]) {
@@ -309,14 +321,43 @@ function ReservationRow({
     });
   }
 
+  function openReturnDialog() {
+    setReturnMileage("");
+    setReturnFuel("Plein");
+    setReturnDialogOpen(true);
+  }
+
+  function confirmReturn() {
+    if (!returnMileage.trim()) return;
+    const mileage = Number(returnMileage);
+    const currentMileage = car?.mileage ?? 0;
+
+    if (!Number.isFinite(mileage) || mileage < currentMileage) return;
+
+    confirmAction({
+      action: "retour",
+      confirmLabel: "Confirmer retour",
+      description: "Cette action terminera la location avec les informations de retour saisies.",
+      title: "Enregistrer le retour ?",
+      onConfirm: async () => {
+        await onStatusChange(reservation.id, "COMPLETED", {
+          returnFuelLevel: returnFuel,
+          returnMileage: mileage,
+        });
+        setReturnDialogOpen(false);
+      },
+    });
+  }
+
   return (
+    <>
     <tr
-      className={cn(
-        "group cursor-pointer border-b border-border bg-white transition-smooth hover:bg-blue-50/40 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-blue-950/20",
-        selected && "bg-blue-50/70 hover:bg-blue-50 dark:bg-blue-950/30 dark:hover:bg-blue-950/40",
-      )}
-      onClick={() => onSelect(reservation)}
-    >
+        className={cn(
+          "group cursor-pointer border-b border-border bg-white transition-smooth hover:bg-blue-50/40 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-blue-950/20",
+          selected && "bg-blue-50/70 hover:bg-blue-50 dark:bg-blue-950/30 dark:hover:bg-blue-950/40",
+        )}
+        onClick={() => onSelect(reservation)}
+      >
       <td className="w-10 px-3 py-5" onClick={(event) => event.stopPropagation()}>
         <input
           aria-label={`Sélectionner la réservation ${reservation.id}`}
@@ -374,7 +415,7 @@ function ReservationRow({
                 ? [{ icon: Play, label: "Démarrer", onClick: () => confirmStatusChange("ONGOING") }]
                 : []),
               ...(reservation.status === "ONGOING"
-                ? [{ icon: CheckCircle2, label: "Terminer", onClick: () => confirmStatusChange("COMPLETED") }]
+                ? [{ icon: CheckCircle2, label: "Terminer", onClick: openReturnDialog }]
                 : []),
               { icon: Archive, label: "Archiver", onClick: confirmArchive },
               ...((reservation.status === "EN_ATTENTE" || reservation.status === "RESERVED") && !hasActiveRentalForCar
@@ -385,6 +426,17 @@ function ReservationRow({
         </div>
       </td>
     </tr>
+    <ReservationReturnDialog
+      car={car}
+      fuelLevel={returnFuel}
+      mileage={returnMileage}
+      onConfirm={confirmReturn}
+      onFuelLevelChange={setReturnFuel}
+      onMileageChange={setReturnMileage}
+      onOpenChange={setReturnDialogOpen}
+      open={returnDialogOpen}
+    />
+    </>
   );
 }
 

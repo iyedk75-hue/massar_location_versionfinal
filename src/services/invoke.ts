@@ -220,6 +220,14 @@ function invokeFallback<T>(command: string, args?: Record<string, unknown>): T {
       if (carStatus) {
         invokeFallback("change_car_status", { id: target.carId, status: carStatus });
       }
+      if (data.status === "COMPLETED" && data.returnMileage != null && Number.isFinite(Number(data.returnMileage))) {
+        const cars = readCollection<Record<string, unknown>>("cars").map((car) =>
+          Number(car.id) === Number(target.carId)
+            ? { ...car, mileage: Number(data.returnMileage), updatedAt: new Date().toISOString() }
+            : car,
+        );
+        writeCollection("cars", cars);
+      }
       if (data.status === "ONGOING") {
         createFallbackContract(id);
       }
@@ -782,12 +790,12 @@ function validateFallbackReservation(data: Record<string, unknown>, excludedRese
     if (reservation.archived === true) return false;
     if (Number(reservation.id) === excludedReservationId) return false;
     if (Number(reservation.carId) !== carId) return false;
-    if (!["EN_ATTENTE", "RESERVED", "ONGOING"].includes(String(reservation.status))) return false;
+    if (!["EN_ATTENTE", "RESERVED", "ONGOING", "COMPLETED"].includes(String(reservation.status))) return false;
 
     const existingStart = new Date(normalizeLegacyDateTime(String(reservation.startDate ?? ""), "start")).getTime();
     const existingEnd = new Date(normalizeLegacyDateTime(String(reservation.endDate ?? ""), "end")).getTime();
 
-    return existingStart < endTime && existingEnd > startTime;
+    return existingStart < endTime && existingEnd >= startTime;
   });
 
   if (hasConflict) {

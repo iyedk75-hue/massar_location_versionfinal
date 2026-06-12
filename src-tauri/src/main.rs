@@ -1725,7 +1725,19 @@ fn update_reservation_status(
                 .map_err(|error| error.to_string())?;
             generate_contract_for_reservation(&connection, id)?;
         }
-        "COMPLETED" | "CANCELLED" => {
+        "COMPLETED" => {
+            connection
+                .execute(
+                    "UPDATE Car
+                     SET status = 'AVAILABLE',
+                         mileage = COALESCE(?2, mileage),
+                         updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+                     WHERE id = ?1",
+                    params![car_id, data.return_mileage],
+                )
+                .map_err(|error| error.to_string())?;
+        }
+        "CANCELLED" => {
             connection
                 .execute(
                     "UPDATE Car SET status = 'AVAILABLE', updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
@@ -2390,9 +2402,9 @@ fn has_reservation_conflict(
              WHERE carId = ?1
                AND (?4 IS NULL OR id != ?4)
                AND (archived = 0 OR archived IS NULL)
-               AND status IN ('EN_ATTENTE', 'RESERVED', 'ONGOING')
+               AND status IN ('EN_ATTENTE', 'RESERVED', 'ONGOING', 'COMPLETED')
                AND (CASE WHEN length(startDate) = 10 THEN startDate || 'T00:00:00.000Z' ELSE startDate END) < ?3
-               AND (CASE WHEN length(endDate) = 10 THEN endDate || 'T23:59:59.999Z' ELSE endDate END) > ?2",
+               AND (CASE WHEN length(endDate) = 10 THEN endDate || 'T23:59:59.999Z' ELSE endDate END) >= ?2",
             params![car_id, start_date, end_date, excluded_id],
             |row| row.get(0),
         )

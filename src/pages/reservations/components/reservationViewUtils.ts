@@ -4,7 +4,7 @@ import type { Payment } from "@/types/payment";
 import type { Reservation, ReservationStatus } from "@/types/reservation";
 import { formatCarName, formatRegistrationNumber } from "@/utils/car";
 import { normalizeClientName } from "@/utils/client";
-import { getCalendarRentalDays, getLocalDateKey } from "@/utils/date";
+import { getLocalDateKey, getRentalDays } from "@/utils/date";
 
 export const RESERVATIONS_VIEW_MODE_STORAGE_KEY = "rentaldesk-reservations-view-mode";
 
@@ -80,7 +80,7 @@ export function buildReservationViewModels(
       client: clientsById.get(reservation.clientId) ?? reservation.client,
       depositCollected,
       depositRefunded,
-      durationDays: getCalendarRentalDays(reservation.startDate, reservation.endDate),
+      durationDays: getRentalDays(reservation.startDate, reservation.endDate),
       paid,
       remaining: Math.max(0, reservation.totalPrice - paid),
       reservation,

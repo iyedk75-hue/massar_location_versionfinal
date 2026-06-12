@@ -15,7 +15,11 @@ interface ReservationListViewProps {
   onEdit: (reservation: Reservation) => void;
   onFiltersChange: (filters: ReservationFiltersState) => void;
   onSelect: (reservation: Reservation) => void;
-  onStatusChange: (id: number, status: Reservation["status"]) => void | Promise<void>;
+  onStatusChange: (
+    id: number,
+    status: Reservation["status"],
+    details?: { returnMileage?: number | null; returnFuelLevel?: string | null },
+  ) => void | Promise<void>;
   stats: {
     all: number;
     cancelled: number;

@@ -1,14 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { MoreHorizontalIcon } from "lucide-react";
 import { Link } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 type DataGridActionTone = "archive" | "default" | "edit" | "info" | "success" | "view";
@@ -26,24 +17,14 @@ export type DataGridActionItem = {
 export function DataGridActionMenu({ actions }: { actions: DataGridActionItem[] }) {
   const regularActions = actions.filter((action) => !action.destructive);
   const destructiveActions = actions.filter((action) => action.destructive);
+  const orderedActions = [...regularActions, ...destructiveActions];
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button aria-label="Ouvrir les actions" className="h-8 w-8 rounded-md" size="icon" type="button" variant="ghost">
-          <MoreHorizontalIcon className="h-4 w-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-44">
-        {regularActions.map((action) => (
-          <ActionMenuItem action={action} key={action.label} />
-        ))}
-        {regularActions.length > 0 && destructiveActions.length > 0 && <DropdownMenuSeparator />}
-        {destructiveActions.map((action) => (
-          <ActionMenuItem action={action} key={action.label} />
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <div className="flex flex-wrap items-center justify-end gap-1">
+      {orderedActions.map((action) => (
+        <ActionMenuItem action={action} key={action.label} />
+      ))}
+    </div>
   );
 }
 
@@ -53,30 +34,40 @@ function ActionMenuItem({ action }: { action: DataGridActionItem }) {
 
   if (action.href) {
     return (
-      <DropdownMenuItem
-        asChild
-        className={cn(toneClassName, action.disabled && "pointer-events-none opacity-50")}
-        variant={action.destructive ? "destructive" : "default"}
+      <Link
+        aria-disabled={action.disabled ? true : undefined}
+        aria-label={action.label}
+        className={cn(getActionButtonClassName(action), toneClassName, action.disabled && "pointer-events-none opacity-50")}
+        title={action.label}
+        to={action.href}
       >
-        <Link to={action.href}>
-          <Icon className="mr-2 h-4 w-4" />
-          {action.label}
-        </Link>
-      </DropdownMenuItem>
+        <Icon className="h-4 w-4" />
+      </Link>
     );
   }
 
   return (
-    <DropdownMenuItem
-      className={cn(toneClassName, action.disabled && "pointer-events-none opacity-50")}
+    <button
+      aria-label={action.label}
+      className={cn(getActionButtonClassName(action), toneClassName)}
+      disabled={action.disabled}
       onClick={() => {
         if (!action.disabled) action.onClick?.();
       }}
-      variant={action.destructive ? "destructive" : "default"}
+      title={action.label}
+      type="button"
     >
-      <Icon className="mr-2 h-4 w-4" />
-      {action.label}
-    </DropdownMenuItem>
+      <Icon className="h-4 w-4" />
+    </button>
+  );
+}
+
+function getActionButtonClassName(action: DataGridActionItem) {
+  return cn(
+    "inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-transparent transition-colors",
+    "hover:border-slate-200 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+    "disabled:pointer-events-none disabled:opacity-50",
+    action.destructive && "text-red-600 hover:border-red-200 hover:bg-red-50 hover:text-red-700",
   );
 }
 
@@ -85,12 +76,12 @@ function getActionToneClassName(action: DataGridActionItem) {
 
   const tone = action.tone ?? inferActionTone(action.label);
   const classNames: Record<DataGridActionTone, string> = {
-    archive: "text-slate-600 focus:text-slate-600 [&_svg]:text-slate-600",
-    default: "text-slate-700 focus:text-slate-700 [&_svg]:text-slate-600",
-    edit: "text-amber-600 focus:text-amber-600 [&_svg]:text-amber-600",
-    info: "text-violet-600 focus:text-violet-600 [&_svg]:text-violet-600",
-    success: "text-green-600 focus:text-green-600 [&_svg]:text-green-600",
-    view: "text-blue-600 focus:text-blue-600 [&_svg]:text-blue-600",
+    archive: "text-slate-600 hover:border-slate-200 hover:bg-slate-100 hover:text-slate-700",
+    default: "text-slate-700 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-900",
+    edit: "text-amber-600 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700",
+    info: "text-violet-600 hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700",
+    success: "text-green-600 hover:border-green-200 hover:bg-green-50 hover:text-green-700",
+    view: "text-blue-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700",
   };
 
   return classNames[tone];

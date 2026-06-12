@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { DataGridActionMenu } from "@/components/ui/action-menu/DataGridActionMenu";
 import { AppPagination } from "@/components/ui/pagination/AppPagination";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -381,12 +382,12 @@ export function ClientsPage() {
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+        <Card className="overflow-hidden p-0 dark:bg-slate-900 dark:border-slate-800">
           <div className="w-full overflow-x-auto md:overflow-x-visible">
             <table className="w-full min-w-[760px] table-fixed text-left text-sm md:min-w-0">
-              <thead className="bg-slate-100/80 text-xs uppercase text-slate-500">
-                <tr>
-                  <th className="w-10 px-3 py-4">
+              <thead>
+                <tr className="border-b border-border bg-slate-50 dark:bg-slate-950">
+                  <th className="w-10 px-3 py-3">
                     <input
                       aria-label="Sélectionner les clients visibles"
                       checked={allVisibleClientsSelected}
@@ -396,16 +397,16 @@ export function ClientsPage() {
                       type="checkbox"
                     />
                   </th>
-                  <th className="min-w-0 px-2 py-4 font-semibold">Client</th>
-                  <th className="w-[112px] px-2 py-4 font-semibold lg:w-[130px]">Téléphone</th>
-                  <th className="w-[106px] px-2 py-4 font-semibold lg:w-[124px]">Permis</th>
-                  <th className="w-[72px] px-2 py-4 font-semibold lg:w-[86px]">Loc.</th>
-                  <th className="w-[118px] px-2 py-4 font-semibold lg:w-[140px]">Dernière</th>
-                  <th className="w-[86px] px-2 py-4 font-semibold lg:w-[100px]">Statut</th>
-                  <th className="w-[118px] px-3 py-4 text-right font-semibold lg:w-[132px]">Actions</th>
+                  <th className="min-w-0 px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Client</th>
+                  <th className="w-[112px] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[130px]">Téléphone</th>
+                  <th className="w-[106px] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[124px]">Permis</th>
+                  <th className="w-[72px] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[86px]">Loc.</th>
+                  <th className="w-[118px] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[140px]">Dernière</th>
+                  <th className="w-[86px] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[100px]">Statut</th>
+                  <th className="w-[118px] px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[132px]">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
+              <tbody>
                 {paginatedClients.length ? (
                   paginatedClients.map((client) => {
                     const locationsCount = locationsByClient.get(client.id) ?? 0;
@@ -413,12 +414,14 @@ export function ClientsPage() {
 
                     return (
                       <tr
-                        className={`transition-colors ${
-                          selectedClientIdsSet.has(client.id) ? "bg-blue-50/70 hover:bg-blue-50" : "hover:bg-slate-50/80"
+                        className={`border-b border-border last:border-0 transition ${
+                          selectedClientIdsSet.has(client.id)
+                            ? "bg-blue-50/70 hover:bg-blue-50 dark:bg-blue-950/30 dark:hover:bg-blue-950/40"
+                            : "hover:bg-slate-50/60 dark:hover:bg-slate-950/40"
                         }`}
                         key={client.id}
                       >
-                        <td className="w-10 px-3 py-4">
+                        <td className="w-10 px-3 py-3">
                           <input
                             aria-label={`Sélectionner ${normalizeClientName(client.fullName)}`}
                             checked={selectedClientIdsSet.has(client.id)}
@@ -427,23 +430,23 @@ export function ClientsPage() {
                             type="checkbox"
                           />
                         </td>
-                        <td className="min-w-0 overflow-hidden px-2 py-4">
+                        <td className="min-w-0 overflow-hidden px-2 py-3">
                           <ClientIdentity client={client} locationsCount={locationsCount} />
                         </td>
-                        <td className="overflow-hidden whitespace-nowrap px-2 py-4 font-medium text-slate-700">
+                        <td className="overflow-hidden whitespace-nowrap px-2 py-3 font-medium text-foreground">
                           <span className="block truncate">{formatPhoneNumber(client.phone)}</span>
                         </td>
-                        <td className="overflow-hidden whitespace-nowrap px-2 py-4 text-slate-600">
+                        <td className="overflow-hidden whitespace-nowrap px-2 py-3 text-muted-foreground">
                           <span className="block truncate">{formatDrivingLicense(client.drivingLicense)}</span>
                         </td>
-                        <td className="overflow-hidden whitespace-nowrap px-2 py-4 font-semibold text-slate-700">{locationsCount}</td>
-                        <td className="overflow-hidden whitespace-nowrap px-2 py-4 font-medium text-slate-700">
+                        <td className="overflow-hidden whitespace-nowrap px-2 py-3 font-semibold text-foreground">{locationsCount}</td>
+                        <td className="overflow-hidden whitespace-nowrap px-2 py-3 font-medium text-foreground">
                           <span className="block truncate">{lastReservation ? formatReadableDate(lastReservation.startDate) : "-"}</span>
                         </td>
-                        <td className="overflow-hidden px-2 py-4">
+                        <td className="overflow-hidden px-2 py-3">
                           <ClientStatusBadge isActive={isClientActive(client)} />
                         </td>
-                        <td className="px-3 py-4">
+                        <td className="px-3 py-3">
                           <ClientActions
                             client={client}
                             onDeactivate={handleDeactivate}
@@ -459,7 +462,7 @@ export function ClientsPage() {
                   })
                 ) : (
                   <tr>
-                    <td className="px-5 py-10 text-center text-muted-foreground" colSpan={8}>
+                    <td className="px-4 py-10 text-center text-sm text-muted-foreground" colSpan={8}>
                       Aucun client trouvé
                     </td>
                   </tr>
@@ -467,7 +470,7 @@ export function ClientsPage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </Card>
 
         {selectedClientIds.length > 0 && (
           <p className="text-sm text-muted-foreground">
@@ -595,12 +598,12 @@ function ClientIdentity({ client, locationsCount }: { client: Client; locationsC
       <ClientAvatar name={client.fullName} />
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
-          <span className={isClientActive(client) ? "truncate font-semibold text-slate-800" : "truncate font-semibold text-slate-500"}>
+          <span className={isClientActive(client) ? "truncate font-semibold text-foreground" : "truncate font-semibold text-muted-foreground"}>
             {normalizeClientName(client.fullName)}
           </span>
           {locationsCount > 5 && <LoyaltyBadge />}
         </div>
-        <p className="mt-0.5 text-xs text-slate-500">{client.cin ? `CIN: ${client.cin}` : `Passport: ${client.passportNumber}`}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{client.cin ? `CIN: ${client.cin}` : `Passport: ${client.passportNumber}`}</p>
       </div>
     </div>
   );
@@ -615,12 +618,12 @@ function ClientAvatar({ name }: { name: string }) {
     .join("")
     .toUpperCase();
   const palette = [
-    "bg-violet-100 text-violet-700",
-    "bg-sky-100 text-sky-700",
-    "bg-emerald-100 text-emerald-700",
-    "bg-orange-100 text-orange-700",
-    "bg-rose-100 text-rose-700",
-    "bg-amber-100 text-amber-700",
+    "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
+    "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
+    "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+    "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
+    "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300",
+    "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
   ];
   const color = palette[name.length % palette.length];
 
@@ -664,8 +667,8 @@ function ClientStatusBadge({ isActive }: { isActive: boolean }) {
     <span
       className={
         isActive
-          ? "inline-flex max-w-full rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200"
-          : "inline-flex max-w-full rounded-full bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 ring-1 ring-rose-200"
+          ? "inline-flex max-w-full rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:ring-emerald-900"
+          : "inline-flex max-w-full rounded-full bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 ring-1 ring-rose-200 dark:bg-rose-900/40 dark:text-rose-300 dark:ring-rose-900"
       }
     >
       <span className="truncate">{isActive ? "Actif" : "Inactif"}</span>
@@ -675,7 +678,7 @@ function ClientStatusBadge({ isActive }: { isActive: boolean }) {
 
 function LoyaltyBadge() {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200">
+    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:ring-amber-900">
       <Star className="h-3 w-3 fill-current" />
       Fidèle
     </span>

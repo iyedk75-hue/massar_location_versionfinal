@@ -15,6 +15,10 @@ import { formatDateTime, getLocalDateKey, getStartOfWeek } from "@/utils/date";
 import { cn } from "@/lib/utils";
 
 const weekdays = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+const MONTH_ROW_MIN_HEIGHT = 128;
+const MONTH_EVENT_TOP_OFFSET = 48;
+const MONTH_EVENT_LANE_STEP = 36;
+const MONTH_EVENT_BOTTOM_PADDING = 14;
 
 interface ReservationCalendarViewProps {
   calendarMode: "month" | "week";
@@ -236,6 +240,11 @@ function CalendarGrid({
   selectedDate: string;
 }) {
   const eventSegments = buildMonthEventSegments(days, reservations);
+  const monthRowHeights = buildMonthRowHeights(eventSegments);
+  const monthGridStyle = {
+    gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+    gridTemplateRows: monthRowHeights,
+  };
 
   return (
     <div className="overflow-x-auto">
@@ -247,10 +256,9 @@ function CalendarGrid({
             </div>
           ))}
         </div>
-        <div className="relative grid" style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}>
+        <div className="relative grid" style={monthGridStyle}>
           {days.map((date) => {
             const dateKey = getLocalDateKey(date);
-            const dayReservations = reservations.filter((reservation) => reservationTouchesDate(reservation, dateKey));
             const inMonth = date.getMonth() === monthDate.getMonth();
             const selected = selectedDate === dateKey;
 
@@ -265,15 +273,15 @@ function CalendarGrid({
                 onClick={() => onSelectDate(dateKey)}
                 type="button"
               >
-                <div className="mb-2 flex justify-between gap-2">
-                  <span className={cn("text-sm font-semibold", !inMonth && "font-normal")}>
+                <div className="pointer-events-none absolute left-3 top-2 z-20">
+                  <span
+                    className={cn(
+                      "inline-flex rounded bg-white/85 px-1 text-sm font-semibold leading-5 dark:bg-slate-900/85",
+                      !inMonth && "font-normal",
+                    )}
+                  >
                     {String(date.getDate()).padStart(2, "0")}
                   </span>
-                  {dayReservations.length > 2 && (
-                    <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-200">
-                      {dayReservations.length}
-                    </span>
-                  )}
                 </div>
               </button>
             );
@@ -282,13 +290,13 @@ function CalendarGrid({
             className="pointer-events-none absolute inset-0 grid"
             style={{
               gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-              gridTemplateRows: "repeat(6, minmax(8rem, 1fr))",
+              gridTemplateRows: monthRowHeights,
             }}
           >
             {eventSegments.map((segment) => (
               <button
                 className={cn(
-                  "pointer-events-auto z-10 mx-2 h-9 rounded-lg px-3 text-left text-xs font-semibold shadow-sm ring-1 transition-smooth hover:-translate-y-0.5 hover:shadow-md",
+                  "pointer-events-auto z-10 mx-2 h-10 rounded-lg px-3 text-left text-xs font-semibold shadow-sm ring-1 transition-smooth hover:-translate-y-0.5 hover:shadow-md",
                   statusColorClasses[segment.reservation.status],
                 )}
                 key={segment.key}
@@ -296,7 +304,7 @@ function CalendarGrid({
                 style={{
                   gridColumn: `${segment.columnStart} / span ${segment.span}`,
                   gridRow: segment.row + 1,
-                  marginTop: `${34 + segment.lane * 36}px`,
+                  marginTop: `${MONTH_EVENT_TOP_OFFSET + segment.lane * MONTH_EVENT_LANE_STEP}px`,
                 }}
                 type="button"
               >
@@ -411,6 +419,23 @@ function buildMonthEventSegments(days: Date[], reservations: Reservation[]): Mon
 
     return segments;
   });
+}
+
+function buildMonthRowHeights(segments: MonthEventSegment[]) {
+  const rowLaneCounts = Array.from({ length: 6 }, () => 0);
+
+  segments.forEach((segment) => {
+    rowLaneCounts[segment.row] = Math.max(rowLaneCounts[segment.row], segment.lane + 1);
+  });
+
+  return rowLaneCounts
+    .map((laneCount) =>
+      `${Math.max(
+        MONTH_ROW_MIN_HEIGHT,
+        MONTH_EVENT_TOP_OFFSET + laneCount * MONTH_EVENT_LANE_STEP + MONTH_EVENT_BOTTOM_PADDING,
+      )}px`,
+    )
+    .join(" ");
 }
 
 function getMonthEventLane(lanes: Array<Array<{ end: number; start: number }>>, start: number, end: number) {

@@ -1,8 +1,9 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Ban, CalendarDays, CarFront, CheckCircle2, FileText, Pencil, Phone, Play, Trash2, WalletCards, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
+import { ReservationReturnDialog } from "@/pages/reservations/components/ReservationReturnDialog";
 import type { Reservation } from "@/types/reservation";
 import { formatCarName, formatRegistrationNumber } from "@/utils/car";
 import { formatPhoneNumber, normalizeClientName } from "@/utils/client";
@@ -19,7 +20,11 @@ interface ReservationQuickDetailsProps {
   onClose: () => void;
   onDelete: (reservation: Reservation) => void | Promise<void>;
   onEdit: (reservation: Reservation) => void;
-  onStatusChange: (id: number, status: Reservation["status"]) => void | Promise<void>;
+  onStatusChange: (
+    id: number,
+    status: Reservation["status"],
+    details?: { returnMileage?: number | null; returnFuelLevel?: string | null },
+  ) => void | Promise<void>;
   open: boolean;
 }
 
@@ -36,6 +41,9 @@ export function ReservationQuickDetails({
   const reservation = item?.reservation;
   const canViewContract = reservation?.status === "ONGOING" || reservation?.status === "COMPLETED";
   const canEdit = reservation?.status !== "COMPLETED" && reservation?.status !== "CANCELLED";
+  const [returnDialogOpen, setReturnDialogOpen] = useState(false);
+  const [returnMileage, setReturnMileage] = useState("");
+  const [returnFuel, setReturnFuel] = useState("Plein");
   const { confirmAction } = useConfirmAction();
 
   function confirmStatusChange(status: Reservation["status"]) {
@@ -57,7 +65,37 @@ export function ReservationQuickDetails({
     });
   }
 
+  function openReturnDialog() {
+    setReturnMileage("");
+    setReturnFuel("Plein");
+    setReturnDialogOpen(true);
+  }
+
+  function confirmReturn() {
+    if (!reservation) return;
+    if (!returnMileage.trim()) return;
+    const mileage = Number(returnMileage);
+    const currentMileage = item?.car?.mileage ?? 0;
+
+    if (!Number.isFinite(mileage) || mileage < currentMileage) return;
+
+    confirmAction({
+      action: "retour",
+      confirmLabel: "Confirmer retour",
+      description: "Cette action terminera la location avec les informations de retour saisies.",
+      title: "Enregistrer le retour ?",
+      onConfirm: async () => {
+        await onStatusChange(reservation.id, "COMPLETED", {
+          returnFuelLevel: returnFuel,
+          returnMileage: mileage,
+        });
+        setReturnDialogOpen(false);
+      },
+    });
+  }
+
   return (
+    <>
     <DialogPrimitive.Root onOpenChange={(value) => !value && onClose()} open={open}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-slate-950/45 data-[state=open]:animate-fade-in data-[state=closed]:animate-fade-out" />
@@ -177,7 +215,7 @@ export function ReservationQuickDetails({
                     </Button>
                   )}
                   {reservation.status === "ONGOING" && (
-                    <Button onClick={() => confirmStatusChange("COMPLETED")} type="button">
+                    <Button onClick={openReturnDialog} type="button">
                       <CheckCircle2 className="h-4 w-4" />
                       Terminer
                     </Button>
@@ -203,6 +241,17 @@ export function ReservationQuickDetails({
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
+    <ReservationReturnDialog
+      car={item?.car}
+      fuelLevel={returnFuel}
+      mileage={returnMileage}
+      onConfirm={confirmReturn}
+      onFuelLevelChange={setReturnFuel}
+      onMileageChange={setReturnMileage}
+      onOpenChange={setReturnDialogOpen}
+      open={returnDialogOpen}
+    />
+    </>
   );
 }
 

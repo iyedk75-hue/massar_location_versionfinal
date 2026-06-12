@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { getStatusLabel } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { DataGridActionMenu } from "@/components/ui/action-menu/DataGridActionMenu";
 import { AppPagination } from "@/components/ui/pagination/AppPagination";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -254,9 +255,29 @@ export function CarsPage() {
     const reservation = ongoingByCarId.get(retourCar.id);
     if (!reservation) return;
 
-    const mileage = retourMileage.trim() ? Number(retourMileage) : undefined;
+    if (!retourMileage.trim()) {
+      showToast({ message: "Le kilométrage retour est obligatoire.", title: "Kilométrage requis", type: "error" });
+      return;
+    }
 
-    if (mileage != null && reservation.pickupMileage != null) {
+    const mileage = Number(retourMileage);
+    const currentMileage = retourCar.mileage ?? 0;
+
+    if (!Number.isFinite(mileage)) {
+      showToast({ message: "Saisissez un kilométrage retour valide.", title: "Kilométrage invalide", type: "error" });
+      return;
+    }
+
+    if (mileage < currentMileage) {
+      showToast({
+        message: `Le kilométrage retour doit être supérieur ou égal à ${formatMileage(currentMileage)}.`,
+        title: "Kilométrage invalide",
+        type: "error",
+      });
+      return;
+    }
+
+    if (reservation.pickupMileage != null) {
       if (Math.floor(mileage / 10000) > Math.floor(reservation.pickupMileage / 10000)) {
         const threshold = Math.floor(mileage / 10000) * 10000;
         push({
@@ -388,12 +409,12 @@ export function CarsPage() {
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+        <Card className="overflow-hidden p-0 dark:bg-slate-900 dark:border-slate-800">
           <div className="w-full overflow-x-auto md:overflow-x-visible">
             <table className="w-full min-w-[760px] table-fixed text-left text-sm md:min-w-0">
-              <thead className="bg-slate-100/80 text-xs uppercase text-slate-500">
-                <tr>
-                  <th className="w-10 px-3 py-4">
+              <thead>
+                <tr className="border-b border-border bg-slate-50 dark:bg-slate-950">
+                  <th className="w-10 px-3 py-3">
                     <input
                       aria-label="Sélectionner les voitures visibles"
                       checked={allVisibleCarsSelected}
@@ -403,27 +424,29 @@ export function CarsPage() {
                       type="checkbox"
                     />
                   </th>
-                  <th className="w-[108px] px-2 py-4 font-semibold lg:w-[126px]">Immat.</th>
-                  <th className="min-w-0 px-2 py-4 font-semibold">Voiture</th>
-                  <th className="w-[76px] px-2 py-4 font-semibold lg:w-[88px]">Carb.</th>
-                  <th className="w-[86px] px-2 py-4 font-semibold lg:w-[100px]">Prix</th>
-                  <th className="w-[92px] px-2 py-4 font-semibold lg:w-[110px]">Km</th>
-                  <th className="w-[104px] px-2 py-4 font-semibold lg:w-[124px]">Alertes</th>
-                  <th className="w-[112px] px-2 py-4 font-semibold lg:w-[126px]">Statut</th>
-                  <th className="w-[136px] px-3 py-4 text-right font-semibold lg:w-[150px]">Actions</th>
+                  <th className="w-[108px] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[126px]">Immat.</th>
+                  <th className="min-w-0 px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Voiture</th>
+                  <th className="w-[76px] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[88px]">Carb.</th>
+                  <th className="w-[86px] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[100px]">Prix</th>
+                  <th className="w-[92px] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[110px]">Km</th>
+                  <th className="w-[104px] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[124px]">Alertes</th>
+                  <th className="w-[112px] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[126px]">Statut</th>
+                  <th className="w-[136px] px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[150px]">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
+              <tbody>
                 {paginatedCars.length ? (
                   paginatedCars.map((car) => (
                     <tr
-                      className={`cursor-pointer transition-colors ${
-                        selectedCarIdsSet.has(car.id) ? "bg-blue-50/70 hover:bg-blue-50" : "hover:bg-slate-50/80"
+                      className={`cursor-pointer border-b border-border last:border-0 transition ${
+                        selectedCarIdsSet.has(car.id)
+                          ? "bg-blue-50/70 hover:bg-blue-50 dark:bg-blue-950/30 dark:hover:bg-blue-950/40"
+                          : "hover:bg-slate-50/60 dark:hover:bg-slate-950/40"
                       }`}
                       key={car.id}
                       onClick={() => navigate(`/cars/${car.id}`)}
                     >
-                      <td className="w-10 px-3 py-4" onClick={(event) => event.stopPropagation()}>
+                      <td className="w-10 px-3 py-3" onClick={(event) => event.stopPropagation()}>
                         <input
                           aria-label={`Sélectionner ${formatCarName(car.brand, car.model)}`}
                           checked={selectedCarIdsSet.has(car.id)}
@@ -432,22 +455,22 @@ export function CarsPage() {
                           type="checkbox"
                         />
                       </td>
-                      <td className="overflow-hidden whitespace-nowrap px-2 py-4 font-semibold text-slate-700">
+                      <td className="overflow-hidden whitespace-nowrap px-2 py-3 font-semibold text-foreground">
                         <RegistrationNumber value={car.registrationNumber} />
                       </td>
-                      <td className="min-w-0 overflow-hidden px-2 py-4">
+                      <td className="min-w-0 overflow-hidden px-2 py-3">
                         <CarIdentity car={car} />
                       </td>
-                      <td className="overflow-hidden whitespace-nowrap px-2 py-4 font-medium text-slate-700">{car.fuelType}</td>
-                      <td className="overflow-hidden whitespace-nowrap px-2 py-4 font-semibold text-slate-700">{formatMoney(car.dailyPrice)}</td>
-                      <td className="overflow-hidden whitespace-nowrap px-2 py-4 text-slate-600">{formatMileage(car.mileage)}</td>
-                      <td className="overflow-hidden px-2 py-4">
+                      <td className="overflow-hidden whitespace-nowrap px-2 py-3 font-medium text-foreground">{car.fuelType}</td>
+                      <td className="overflow-hidden whitespace-nowrap px-2 py-3 font-semibold text-foreground">{formatMoney(car.dailyPrice)}</td>
+                      <td className="overflow-hidden whitespace-nowrap px-2 py-3 text-muted-foreground">{formatMileage(car.mileage)}</td>
+                      <td className="overflow-hidden px-2 py-3">
                         <CarAlerts car={car} />
                       </td>
-                      <td className="overflow-hidden px-2 py-4">
+                      <td className="overflow-hidden px-2 py-3">
                         <FleetStatusBadge status={car.status} />
                       </td>
-                      <td className="px-3 py-4" onClick={(event) => event.stopPropagation()}>
+                      <td className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
                         <CarActions
                           car={car}
                           hasOngoingReservation={ongoingByCarId.has(car.id)}
@@ -467,7 +490,7 @@ export function CarsPage() {
                   ))
                 ) : (
                   <tr>
-                    <td className="px-5 py-10 text-center text-muted-foreground" colSpan={9}>
+                    <td className="px-4 py-10 text-center text-sm text-muted-foreground" colSpan={9}>
                       Aucune voiture trouvée
                     </td>
                   </tr>
@@ -475,7 +498,7 @@ export function CarsPage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </Card>
 
         {selectedCarIds.length > 0 && (
           <p className="text-sm text-muted-foreground">
@@ -508,9 +531,11 @@ export function CarsPage() {
                   min={retourCar.mileage ?? 0}
                   onChange={(event) => setRetourMileage(event.target.value)}
                   placeholder={`Ex: ${(retourCar.mileage ?? 0) + 500}`}
+                  required
                   type="number"
                   value={retourMileage}
                 />
+                {!retourMileage.trim() && <p className="mt-1 text-xs text-destructive">Le kilométrage retour est obligatoire.</p>}
               </div>
               <div>
                 <Label>Niveau carburant au retour</Label>
@@ -587,8 +612,8 @@ function CarIdentity({ car }: { car: Car }) {
     <div className="flex min-w-0 items-center gap-2 lg:gap-3">
       <CarThumbnail car={car} />
       <div className="min-w-0">
-        <p className="truncate font-semibold text-slate-800">{formatCarName(car.brand, car.model)}</p>
-        <p className="mt-0.5 text-xs text-slate-500">{car.year ?? "-"}</p>
+        <p className="truncate font-semibold text-foreground">{formatCarName(car.brand, car.model)}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{car.year ?? "-"}</p>
       </div>
     </div>
   );
@@ -599,14 +624,14 @@ function CarThumbnail({ car }: { car: Car }) {
     return (
       <img
         alt={formatCarName(car.brand, car.model)}
-        className="h-9 w-12 shrink-0 rounded-md object-cover lg:h-10 lg:w-14"
+        className="h-9 w-12 shrink-0 rounded-md object-cover ring-1 ring-border lg:h-10 lg:w-14"
         src={car.imageUrl}
       />
     );
   }
 
   return (
-    <span className="flex h-9 w-12 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-500 ring-1 ring-slate-200 lg:h-10 lg:w-14">
+    <span className="flex h-9 w-12 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-500 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700 lg:h-10 lg:w-14">
       <CarIcon className="h-5 w-5 lg:h-6 lg:w-6" />
     </span>
   );
@@ -653,7 +678,7 @@ function CarAlerts({ car }: { car: Car }) {
     <div className="flex min-w-0 flex-wrap gap-1">
       {alerts.map((alert) => (
         <span
-          className="inline-flex max-w-full items-center gap-1 rounded-full bg-amber-50 px-1.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200 lg:px-2"
+          className="inline-flex max-w-full items-center gap-1 rounded-full bg-amber-50 px-1.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:ring-amber-900 lg:px-2"
           key={alert.label}
           title={alert.title}
         >
@@ -667,10 +692,10 @@ function CarAlerts({ car }: { car: Car }) {
 
 function FleetStatusBadge({ status }: { status: CarStatus }) {
   const styles: Record<CarStatus, string> = {
-    AVAILABLE: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-    MAINTENANCE: "bg-rose-50 text-rose-700 ring-rose-200",
-    RENTED: "bg-blue-50 text-blue-700 ring-blue-200",
-    UNAVAILABLE: "bg-slate-100 text-slate-600 ring-slate-200",
+    AVAILABLE: "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:ring-emerald-900",
+    MAINTENANCE: "bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-900/40 dark:text-rose-300 dark:ring-rose-900",
+    RENTED: "bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:ring-blue-900",
+    UNAVAILABLE: "bg-slate-100 text-slate-600 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700",
   };
 
   const dotStyles: Record<CarStatus, string> = {

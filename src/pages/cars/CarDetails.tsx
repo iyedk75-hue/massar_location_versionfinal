@@ -2,25 +2,20 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
-  Archive,
   ArrowLeft,
   Calendar,
   CalendarDays,
   Car as CarIcon,
   CircleDollarSign,
-  Eye,
   Fuel,
   Gauge,
   Hash,
   PackageOpen,
-  Pencil,
   Settings2,
   ShieldCheck,
-  Trash2,
   Wrench,
 } from "lucide-react";
 import { getStatusLabel, StatusBadge } from "@/components/StatusBadge";
-import { DataGridActionMenu } from "@/components/ui/action-menu/DataGridActionMenu";
 import { Badge } from "@/components/ui/badge";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
@@ -35,8 +30,19 @@ import type { Reservation } from "@/types/reservation";
 import { cn } from "@/lib/utils";
 import { formatCarName, formatRegistrationNumber } from "@/utils/car";
 import { normalizeClientName } from "@/utils/client";
-import { formatDateTime, formatShortPeriod } from "@/utils/date";
+import { formatDateTime } from "@/utils/date";
 import { formatMoney } from "@/utils/money";
+
+const AVATAR_COLORS = [
+  "bg-blue-500",
+  "bg-violet-500",
+  "bg-emerald-500",
+  "bg-orange-500",
+  "bg-pink-500",
+  "bg-teal-500",
+  "bg-indigo-500",
+  "bg-rose-500",
+];
 
 export function CarDetails() {
   const navigate = useNavigate();
@@ -113,11 +119,6 @@ export function CarDetails() {
             <BreadcrumbSeparator />
             <BreadcrumbItem className="truncate text-foreground">{carName}</BreadcrumbItem>
           </Breadcrumb>
-
-          <div>
-            <h1 className="truncate text-2xl font-semibold tracking-normal text-slate-950 dark:text-slate-100">{carName}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">{formatRegistrationNumber(car.registrationNumber)}</p>
-          </div>
         </div>
 
         <Button className="h-10 w-fit rounded-lg" onClick={() => navigate("/cars")} type="button" variant="outline">
@@ -306,55 +307,38 @@ function RelatedReservationsCard({
         </div>
       ) : (
         <div className="w-full overflow-x-auto md:overflow-x-visible">
-          <table className="w-full min-w-[860px] table-fixed text-left text-sm md:min-w-0">
-            <thead className="bg-slate-50 text-xs uppercase text-muted-foreground dark:bg-slate-900/70">
-              <tr>
-                <TableHead className="min-w-0">Client</TableHead>
-                <TableHead className="w-[148px] lg:w-[174px]">Période</TableHead>
+          <table className="w-full min-w-[640px] table-fixed text-sm md:min-w-0">
+            <thead>
+              <tr className="border-b border-border bg-slate-50 dark:bg-slate-950">
+                <TableHead className="w-[300px] lg:w-[360px]">Client</TableHead>
                 <TableHead className="w-[132px] lg:w-[154px]">Départ</TableHead>
                 <TableHead className="w-[132px] lg:w-[154px]">Retour</TableHead>
                 <TableHead className="w-[96px] lg:w-[118px]">Montant</TableHead>
                 <TableHead className="w-[112px] lg:w-[132px]">Statut</TableHead>
-                <TableHead className="w-[82px] text-right lg:w-[96px]">Actions</TableHead>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody>
               {latestReservations.map((reservation) => {
                 const client = clientsById.get(reservation.clientId) ?? reservation.client;
                 return (
-                  <tr className="transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-900/70" key={reservation.id}>
-                    <TableCell className="min-w-0 overflow-hidden">
-                      <p className="truncate font-semibold text-slate-950 dark:text-slate-100">
-                        {client ? normalizeClientName(client.fullName) : `Client #${reservation.clientId}`}
-                      </p>
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">Réservation #{reservation.id}</p>
+                  <tr
+                    className="border-b border-border last:border-0 transition hover:bg-slate-50/60 dark:hover:bg-slate-950/40"
+                    key={reservation.id}
+                  >
+                    <TableCell className="w-[300px] min-w-0 overflow-hidden lg:w-[360px]">
+                      <ReservationClientCell client={client} reservation={reservation} />
                     </TableCell>
                     <TableCell className="overflow-hidden whitespace-nowrap">
-                      <span className="block truncate">{formatShortPeriod(reservation.startDate, reservation.endDate)}</span>
+                      <DateTimeCell value={reservation.startDate} />
                     </TableCell>
                     <TableCell className="overflow-hidden whitespace-nowrap">
-                      <span className="block truncate">{formatDateTime(reservation.startDate)}</span>
-                    </TableCell>
-                    <TableCell className="overflow-hidden whitespace-nowrap">
-                      <span className="block truncate">{formatDateTime(reservation.endDate)}</span>
+                      <DateTimeCell value={reservation.endDate} />
                     </TableCell>
                     <TableCell className="overflow-hidden whitespace-nowrap font-semibold">
                       <span className="block truncate">{formatMoney(reservation.totalPrice)}</span>
                     </TableCell>
                     <TableCell className="overflow-hidden">
                       <StatusBadge status={reservation.status} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end">
-                        <DataGridActionMenu
-                          actions={[
-                            { icon: Eye, label: "Voir détails", onClick: onOpenReservations },
-                            { icon: Pencil, label: "Modifier", onClick: onOpenReservations },
-                            { disabled: true, icon: Archive, label: "Archiver" },
-                            { destructive: true, disabled: true, icon: Trash2, label: "Supprimer" },
-                          ]}
-                        />
-                      </div>
                     </TableCell>
                   </tr>
                 );
@@ -365,6 +349,59 @@ function RelatedReservationsCard({
       )}
     </Card>
   );
+}
+
+function ReservationClientCell({ client, reservation }: { client?: Client; reservation: Reservation }) {
+  const name = client ? normalizeClientName(client.fullName) : `Client #${reservation.clientId}`;
+
+  return (
+    <div className="flex min-w-0 items-center gap-2 lg:gap-3">
+      <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white", avatarColor(reservation.clientId))}>
+        {clientInitials(name)}
+      </div>
+      <div className="min-w-0">
+        <p className="truncate font-semibold text-foreground">{name}</p>
+        <p className="truncate text-xs text-muted-foreground">{getClientIdentifier(client)}</p>
+      </div>
+    </div>
+  );
+}
+
+function DateTimeCell({ value }: { value: string }) {
+  const dateTime = formatDateLine(value);
+
+  return (
+    <>
+      <p className="truncate text-sm text-foreground">{dateTime.date}</p>
+      <p className="truncate text-xs text-muted-foreground">{dateTime.time}</p>
+    </>
+  );
+}
+
+function formatDateLine(value: string) {
+  const date = new Date(value);
+
+  return {
+    date: new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", year: "numeric" }).format(date),
+    time: new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" }).format(date),
+  };
+}
+
+function clientInitials(name: string) {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
+function avatarColor(id: number) {
+  return AVATAR_COLORS[id % AVATAR_COLORS.length];
+}
+
+function getClientIdentifier(client?: Client) {
+  if (!client) return "Pièce : -";
+  if (client.cin) return `CIN : ${client.cin}`;
+  if (client.passportNumber) return `Passeport : ${client.passportNumber}`;
+  return "Pièce : -";
 }
 
 function StateCard({ description, title }: { description: string; title: string }) {
@@ -379,11 +416,15 @@ function StateCard({ description, title }: { description: string; title: string 
 }
 
 function TableHead({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <th className={cn("px-3 py-3 font-semibold", className)}>{children}</th>;
+  return (
+    <th className={cn("px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground", className)}>
+      {children}
+    </th>
+  );
 }
 
 function TableCell({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <td className={cn("px-3 py-4 align-middle", className)}>{children}</td>;
+  return <td className={cn("px-2 py-3 align-middle", className)}>{children}</td>;
 }
 
 function formatMileage(value?: number | null) {

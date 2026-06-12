@@ -3,7 +3,7 @@ import {
   Archive,
   Banknote,
   CalendarDays,
-  Check,
+  Car as CarIcon,
   Eye,
   Plus,
   ReceiptText,
@@ -15,6 +15,7 @@ import { DataGridActionMenu } from "@/components/ui/action-menu/DataGridActionMe
 import { AppPagination } from "@/components/ui/pagination/AppPagination";
 import { ArchiveConfirmDialog } from "@/components/archive/ArchiveConfirmDialog";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/ui/SearchableSelect";
@@ -32,7 +33,7 @@ import type { Reservation } from "@/types/reservation";
 import { cn } from "@/lib/utils";
 import { formatCarName, formatRegistrationNumber } from "@/utils/car";
 import { formatClientIdentity, normalizeClientName } from "@/utils/client";
-import { formatShortPeriod, getLocalDateKey } from "@/utils/date";
+import { formatShortPeriod, getLocalDateKey, getRentalDays } from "@/utils/date";
 import { formatMoney } from "@/utils/money";
 import { useToast } from "@/hooks/useToast";
 import { useConfirmAction } from "@/hooks/useConfirmAction";
@@ -64,6 +65,17 @@ const paymentStatusFilterOptions = [
   { value: "Partiel", label: "Partiel" },
   { value: "Non payé", label: "Non payé" },
   { value: "Annulée", label: "Annulée" },
+];
+
+const AVATAR_COLORS = [
+  "bg-blue-500",
+  "bg-violet-500",
+  "bg-emerald-500",
+  "bg-orange-500",
+  "bg-pink-500",
+  "bg-teal-500",
+  "bg-indigo-500",
+  "bg-rose-500",
 ];
 
 export function PaymentsPage() {
@@ -321,7 +333,7 @@ export function PaymentsPage() {
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm">
+      <Card className="overflow-hidden p-0 dark:bg-slate-900 dark:border-slate-800">
         <PaymentsDataGrid
           onArchivePayment={(payment) =>
             confirmAction({
@@ -343,7 +355,7 @@ export function PaymentsPage() {
           totalItems={filteredSummaries.length}
           totalPages={totalPages}
         />
-      </section>
+      </Card>
 
       <Dialog onOpenChange={(nextOpen) => !nextOpen && setActionSummary(null)} open={Boolean(actionSummary)}>
         <DialogContent>
@@ -515,24 +527,24 @@ function PaymentsDataGrid({
 }) {
   return (
     <div className="w-full overflow-x-auto md:overflow-x-visible">
-      <table className="w-full min-w-[900px] table-fixed border-separate border-spacing-0 text-left text-sm md:min-w-0" role="grid">
-        <thead className="bg-slate-50 text-xs uppercase text-muted-foreground">
-          <tr>
-            <TableHead className="min-w-0">Client</TableHead>
-            <TableHead className="min-w-0">Véhicule</TableHead>
-            <TableHead className="w-[126px] lg:w-[146px]">Période</TableHead>
-            <TableHead className="w-[84px] lg:w-[96px]">Dû</TableHead>
-            <TableHead className="w-[84px] lg:w-[96px]">Payé</TableHead>
-            <TableHead className="w-[84px] lg:w-[96px]">Reste</TableHead>
-            <TableHead className="w-[108px] lg:w-[126px]">Caution</TableHead>
-            <TableHead className="w-[92px] lg:w-[108px]">Statut</TableHead>
-            <TableHead className="w-[82px] text-right lg:w-[96px]">Actions</TableHead>
+      <table className="w-full min-w-[1040px] table-fixed text-sm md:min-w-0" role="grid">
+        <thead>
+          <tr className="border-b border-border bg-slate-50 dark:bg-slate-950">
+            <th className="min-w-0 px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Client</th>
+            <th className="min-w-0 px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Voiture</th>
+            <th className="w-[126px] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[146px]">Période</th>
+            <th className="w-[86px] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[102px]">Dû</th>
+            <th className="w-[86px] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[102px]">Payé</th>
+            <th className="w-[86px] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[102px]">Reste</th>
+            <th className="w-[112px] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[132px]">Caution</th>
+            <th className="w-[96px] px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[118px]">Statut</th>
+            <th className="w-[154px] px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:w-[176px]">Actions</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td className="px-4 py-10 text-center text-muted-foreground" colSpan={9}>
+              <td className="px-4 py-10 text-center text-sm text-muted-foreground" colSpan={9}>
                 Aucun résumé de paiement trouvé
               </td>
             </tr>
@@ -541,34 +553,35 @@ function PaymentsDataGrid({
               const actionLocked = isPaymentActionLocked(row);
 
               return (
-                <tr className="border-t border-border transition-colors hover:bg-muted/40" key={row.reservation.id}>
-                  <TableCell className="min-w-0 overflow-hidden">
-                    <p className="truncate font-semibold">{row.client ? normalizeClientName(row.client.fullName) : "Client inconnu"}</p>
-                    <p className="truncate text-xs text-muted-foreground">{getClientIdentifier(row.client)}</p>
-                  </TableCell>
-                  <TableCell className="min-w-0 overflow-hidden">
-                    <p className="truncate font-semibold">{row.car ? formatCarName(row.car.brand, row.car.model) : "Voiture inconnue"}</p>
-                    <p className="truncate text-xs text-muted-foreground">{row.car ? `(${formatRegistrationNumber(row.car.registrationNumber)})` : "-"}</p>
-                  </TableCell>
-                  <TableCell className="overflow-hidden whitespace-nowrap">
-                    <span className="block truncate">{formatShortPeriod(row.reservation.startDate, row.reservation.endDate)}</span>
-                  </TableCell>
-                  <TableCell className="overflow-hidden whitespace-nowrap font-semibold">
+                <tr
+                  className="border-b border-border last:border-0 transition hover:bg-slate-50/60 dark:hover:bg-slate-950/40"
+                  key={row.reservation.id}
+                >
+                  <td className="min-w-0 overflow-hidden px-2 py-3">
+                    <ClientCell client={row.client} />
+                  </td>
+                  <td className="min-w-0 overflow-hidden px-2 py-3">
+                    <CarCell car={row.car} />
+                  </td>
+                  <td className="overflow-hidden px-2 py-3">
+                    <PeriodCell reservation={row.reservation} />
+                  </td>
+                  <td className="overflow-hidden whitespace-nowrap px-2 py-3 font-semibold">
                     <span className="block truncate">{formatMoney(row.reservation.totalPrice)}</span>
-                  </TableCell>
-                  <TableCell className="overflow-hidden whitespace-nowrap font-semibold text-emerald-700">
+                  </td>
+                  <td className="overflow-hidden whitespace-nowrap px-2 py-3 font-semibold text-emerald-700 dark:text-emerald-300">
                     <span className="block truncate">{formatMoney(row.paid)}</span>
-                  </TableCell>
-                  <TableCell className={cn("overflow-hidden whitespace-nowrap font-semibold", row.remaining > 0 ? "text-red-600" : "text-foreground")}>
+                  </td>
+                  <td className={cn("overflow-hidden whitespace-nowrap px-2 py-3 font-semibold", row.remaining > 0 ? "text-red-600 dark:text-red-300" : "text-foreground")}>
                     <span className="block truncate">{formatMoney(row.remaining)}</span>
-                  </TableCell>
-                  <TableCell className="overflow-hidden">
+                  </td>
+                  <td className="overflow-hidden px-2 py-3">
                     <DepositBadge summary={row} />
-                  </TableCell>
-                  <TableCell className="overflow-hidden">
+                  </td>
+                  <td className="overflow-hidden px-2 py-3">
                     <PaymentStatus label={row.status} />
-                  </TableCell>
-                  <TableCell className="text-right">
+                  </td>
+                  <td className="px-3 py-3 text-right">
                     <div className="flex justify-end">
                       <DataGridActionMenu
                         actions={[
@@ -588,7 +601,7 @@ function PaymentsDataGrid({
                         ]}
                       />
                     </div>
-                  </TableCell>
+                  </td>
                 </tr>
               );
             })
@@ -599,20 +612,90 @@ function PaymentsDataGrid({
   );
 }
 
+function ClientCell({ client }: { client?: Client }) {
+  if (!client) return <span className="text-muted-foreground">Client inconnu</span>;
+
+  const name = normalizeClientName(client.fullName);
+
+  return (
+    <div className="flex min-w-0 items-center gap-2 lg:gap-3">
+      <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white", avatarColor(client.id))}>
+        {clientInitials(name)}
+      </div>
+      <div className="min-w-0">
+        <p className="truncate font-semibold text-foreground">{name}</p>
+        <p className="truncate text-xs text-muted-foreground">{getClientIdentifier(client)}</p>
+      </div>
+    </div>
+  );
+}
+
+function CarCell({ car }: { car?: Car }) {
+  if (!car) return <span className="text-muted-foreground">Voiture inconnue</span>;
+
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-500 dark:bg-slate-800">
+        <CarIcon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0">
+        <p className="truncate font-medium text-foreground">{formatCarName(car.brand, car.model)}</p>
+        <p className="truncate text-xs text-muted-foreground">{formatRegistrationNumber(car.registrationNumber)}</p>
+      </div>
+    </div>
+  );
+}
+
+function PeriodCell({ reservation }: { reservation: Reservation }) {
+  const period = formatPaymentPeriodLines(reservation);
+
+  return (
+    <div className="text-sm">
+      <p className="truncate text-foreground">{period.start} -</p>
+      <p className="truncate text-foreground">{period.end}</p>
+      <p className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+        <CalendarDays className="h-3 w-3 shrink-0" />
+        <span className="truncate">{period.duration}</span>
+      </p>
+    </div>
+  );
+}
+
+function formatPaymentPeriodLines(reservation: Reservation) {
+  const fmt = (value: string) =>
+    new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+  const days = Math.max(1, getRentalDays(reservation.startDate, reservation.endDate));
+
+  return {
+    duration: `${days} jour${days > 1 ? "s" : ""}`,
+    end: fmt(reservation.endDate),
+    start: fmt(reservation.startDate),
+  };
+}
+
+function clientInitials(name: string) {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
+function avatarColor(id: number) {
+  return AVATAR_COLORS[id % AVATAR_COLORS.length];
+}
+
 function PaymentStatus({ label }: { label: PaymentStatus }) {
   const className =
     label === "Payé"
-      ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
       : label === "Partiel"
-        ? "bg-amber-50 text-amber-700 ring-amber-200"
+        ? "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300"
         : label === "Annulée"
-          ? "bg-slate-50 text-slate-700 ring-slate-200"
-          : "bg-red-50 text-red-700 ring-red-200";
+          ? "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+          : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300";
 
   return (
-    <span className={cn("inline-flex max-w-full items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold ring-1", className)}>
+    <span className={cn("inline-flex max-w-full items-center rounded-full px-2 py-0.5 text-xs font-semibold", className)}>
       <span className="truncate">{label}</span>
-      {label === "Payé" && <Check className="h-3 w-3 shrink-0" />}
     </span>
   );
 }
@@ -620,48 +703,21 @@ function PaymentStatus({ label }: { label: PaymentStatus }) {
 function DepositBadge({ summary }: { summary: ReservationSummary }) {
   const className =
     summary.depositStatus === "Remboursée"
-      ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
       : summary.depositStatus === "Retenue"
-        ? "bg-red-50 text-red-700 ring-red-200"
+        ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
         : summary.depositStatus === "Bloquée"
-          ? "bg-amber-50 text-amber-700 ring-amber-200"
-          : "bg-slate-50 text-slate-700 ring-slate-200";
+          ? "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300"
+          : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
 
   return (
     <div className="flex min-w-0 flex-col items-start gap-1">
-      <span className={cn("inline-flex max-w-full rounded-md px-2 py-1 text-xs font-semibold ring-1", className)}>
+      <span className={cn("inline-flex max-w-full rounded-full px-2 py-0.5 text-xs font-semibold", className)}>
         <span className="truncate">{formatMoney(summary.depositAmount)}</span>
       </span>
       <span className="max-w-full truncate text-xs font-medium text-muted-foreground">{summary.depositStatus}</span>
     </div>
   );
-}
-
-function SummaryRow({
-  emphasized,
-  label,
-  tone,
-  value,
-}: {
-  emphasized?: boolean;
-  label: string;
-  tone?: "danger" | "paid";
-  value: string;
-}) {
-  return (
-    <div className={cn("flex items-center justify-between gap-4 py-2", emphasized && "border-t border-border pt-3 font-semibold")}>
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className={cn("font-semibold", tone === "paid" && "text-emerald-700", tone === "danger" && "text-red-600")}>{value}</dd>
-    </div>
-  );
-}
-
-function TableHead({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <th className={cn("px-2 py-3 font-semibold", className)}>{children}</th>;
-}
-
-function TableCell({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <td className={cn("px-2 py-3 align-middle", className)}>{children}</td>;
 }
 
 function sumPayments(payments: Payment[], type: Payment["type"]) {

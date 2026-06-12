@@ -36,7 +36,7 @@ type CarAvailability = {
   unavailableStatus: boolean;
 };
 
-const activeReservationStatuses: Reservation["status"][] = ["EN_ATTENTE", "RESERVED", "ONGOING"];
+const blockingReservationStatuses: Reservation["status"][] = ["EN_ATTENTE", "RESERVED", "ONGOING", "COMPLETED"];
 
 export function ReservationForm({
   onSubmit,
@@ -52,6 +52,7 @@ export function ReservationForm({
   const initialEnd = defaultValues?.endDate ? new Date(defaultValues.endDate) : null;
   const initialCarIdRef = useRef(defaultValues?.carId ?? 0);
   const didInitializeCarPricingRef = useRef(false);
+  const isEditing = Boolean(defaultValues?.id);
   const {
     register,
     handleSubmit,
@@ -187,22 +188,28 @@ export function ReservationForm({
   }, [setValue, totalPrice]);
 
   useEffect(() => {
+    const keepInitialEditingDates = isEditing && !dirtyFields.startDate && !dirtyFields.endDate && endDate;
+    if (keepInitialEditingDates) return;
+
     if (startDate && !dirtyFields.endDate) {
       setValue("endDate", addDaysKey(startDate, 1), { shouldValidate: true });
     } else if (startDate && endDate && getMinimumEndDateTime(startDate, pickupTime) > new Date(endDateTime).getTime()) {
       setValue("endDate", addDaysKey(startDate, 1), { shouldDirty: true, shouldValidate: true });
     }
-  }, [dirtyFields.endDate, endDate, endDateTime, pickupTime, setValue, startDate]);
+  }, [dirtyFields.endDate, dirtyFields.startDate, endDate, endDateTime, isEditing, pickupTime, setValue, startDate]);
 
   useEffect(() => {
     if (!pickupTime) return;
+    const keepInitialEditingTimes = isEditing && !dirtyFields.pickupTime && !dirtyFields.returnTime && returnTime;
+    if (keepInitialEditingTimes) return;
+
     if (!dirtyFields.returnTime) {
       setValue("returnTime", pickupTime, { shouldValidate: true });
     } else if (getMinimumEndDateTime(startDate, pickupTime) > new Date(endDateTime).getTime()) {
       setValue("returnTime", pickupTime, { shouldValidate: true });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dirtyFields.returnTime, pickupTime, startDate, endDate, setValue]);
+  }, [dirtyFields.pickupTime, dirtyFields.returnTime, endDate, endDateTime, isEditing, pickupTime, returnTime, setValue, startDate]);
 
   useEffect(() => {
     if (carId > 0 && dateRangeIsValid) void trigger("carId");
@@ -473,7 +480,7 @@ function getCarAvailability(
       (reservation) =>
         reservation.carId === car.id &&
         reservation.id !== excludedReservationId &&
-        activeReservationStatuses.includes(reservation.status) &&
+        blockingReservationStatuses.includes(reservation.status) &&
         rangesOverlap(startDateTime, endDateTime, reservation.startDate, reservation.endDate),
     );
   const unavailableStatus = ["MAINTENANCE", "UNAVAILABLE"].includes(car.status);
@@ -498,7 +505,7 @@ function rangesOverlap(startDate: string, endDate: string, existingStartDate: st
   const existingStart = new Date(normalizeLegacyDateTime(existingStartDate, "start")).getTime();
   const existingEnd = new Date(normalizeLegacyDateTime(existingEndDate, "end")).getTime();
 
-  return existingStart < end && existingEnd > start;
+  return existingStart < end && existingEnd >= start;
 }
 
 function normalizeLegacyDateTime(value: string, boundary: "start" | "end") {

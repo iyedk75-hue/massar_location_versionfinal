@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { PageHeader } from "@/app/layout";
 import { ArchiveConfirmDialog } from "@/components/archive/ArchiveConfirmDialog";
+import { Breadcrumb, BreadcrumbItem, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ReservationCalendarView } from "@/pages/reservations/components/ReservationCalendarView";
@@ -114,6 +115,7 @@ export function ReservationsPage() {
   );
   const filteredItems = useMemo(() => filterReservationViewModels(reservationItems, filters), [filters, reservationItems]);
   const stats = useMemo(() => getReservationStats(reservationItems), [reservationItems]);
+  const filteredCar = filters.carId ? carsById.get(filters.carId) : undefined;
   const selectedItem = selectedReservationId
     ? reservationItems.find((item) => item.reservation.id === selectedReservationId) ?? null
     : null;
@@ -151,9 +153,13 @@ export function ReservationsPage() {
     }
   }
 
-  async function handleStatus(id: number, status: Reservation["status"]) {
+  async function handleStatus(
+    id: number,
+    status: Reservation["status"],
+    details?: { returnMileage?: number | null; returnFuelLevel?: string | null },
+  ) {
     try {
-      const reservation = await updateReservationStatus(id, { status });
+      const reservation = await updateReservationStatus(id, { status, ...details });
 
       if (status === "COMPLETED") {
         const { pickupMileage, returnMileage, carId } = reservation;
@@ -253,6 +259,24 @@ export function ReservationsPage() {
 
   return (
     <div className="min-w-0 space-y-5 dark:bg-slate-950">
+      {filteredCar && (
+        <Breadcrumb>
+          <BreadcrumbItem>
+            <Link className="transition-smooth hover:text-primary" to="/cars">
+              Véhicules
+            </Link>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <Link className="truncate transition-smooth hover:text-primary" to={`/cars/${filteredCar.id}`}>
+              {formatCarName(filteredCar.brand, filteredCar.model)}
+            </Link>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem className="truncate text-foreground">Réservations</BreadcrumbItem>
+        </Breadcrumb>
+      )}
+
       <PageHeader title="Réservations">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <ReservationViewToggle mode={viewMode} onChange={setViewMode} />
